@@ -42,7 +42,7 @@ module LibBF.Mutable
   -- * Convert from a number
   , toDouble
   , toString
-  , toRep
+  , toRep, BFRep(..)
 
   -- * Configuration
   , module LibBF.Opts
