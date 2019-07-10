@@ -1,3 +1,4 @@
+{-# Language Trustworthy #-}
 module LibBF
   (
     -- * Constants
