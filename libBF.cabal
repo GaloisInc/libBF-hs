@@ -18,7 +18,7 @@ library
   exposed-modules:     LibBF,
                        LibBF.Opts,
                        LibBF.Mutable
-  build-depends:       base ^>=4.12.0.0
+  build-depends:       base ^>=4.12.0.0, deepseq
   hs-source-dirs:      src
   build-tools:         hsc2hs
   include-dirs:        libBF

@@ -61,7 +61,6 @@ import Data.Int
 import Data.Bits
 import Control.Monad(foldM)
 
-import Numeric
 import Foreign.Storable
 
 #include <libbf.h>

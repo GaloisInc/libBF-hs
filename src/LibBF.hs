@@ -18,6 +18,8 @@ module LibBF
   , bfIsFinite
   , bfIsZero
   , bfIsNaN
+  , bfIsLT
+  , bfIsLEQ
 
     -- * Arithmetic
   , bfAdd, bfSub, bfMul, bfDiv, bfMod, bfRem
@@ -42,10 +44,15 @@ import System.IO.Unsafe
 
 import LibBF.Mutable as M
 import LibBF.Opts
+import Control.DeepSeq
 
 
 -- | Arbitrary precision floating point numbers.
 newtype BigFloat = BigFloat BF
+
+instance NFData BigFloat where
+  rnf x = x `seq` ()
+
 
 instance Show BigFloat where
   show = bfToString 10 (showFixed 25)
@@ -109,10 +116,23 @@ bfFromDouble = newBigFloat . setDouble
 instance Eq BigFloat where
   BigFloat x == BigFloat y = unsafe (cmpEq x y)
 
+{-| Compare the two numbers.  The special values are ordered like this:
+
+      * -0 < 0
+      * NaN == NaN
+      * NaN is larger than all other numbers
+
+Note that these differ from 'bfIsLT' and 'bfIsLEQ'.
+-}
 instance Ord BigFloat where
   compare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
-  BigFloat x < BigFloat y           = unsafe (cmpLT x y)
-  BigFloat x <= BigFloat y          = unsafe (cmpLEQ x y)
+
+-- | Compare two 
+bfIsLT :: BigFloat -> BigFloat -> Bool
+bfIsLT (BigFloat x) (BigFloat y) = unsafe (cmpLT x y)
+
+bfIsLEQ :: BigFloat -> BigFloat -> Bool
+bfIsLEQ (BigFloat x) (BigFloat y) = unsafe (cmpLEQ x y)
 
 -- | Is this a "normal" (i.e., non-infinite, non NaN) number.
 bfIsFinite :: BigFloat -> Bool
