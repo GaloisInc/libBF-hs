@@ -42,9 +42,11 @@ module LibBF.Mutable
   -- * Convert from a number
   , toDouble
   , toString
+  , toRep
 
   -- * Configuration
   , module LibBF.Opts
+
   ) where
 
 
@@ -56,6 +58,11 @@ import Foreign.C.Types
 import Foreign.C.String
 import Data.Word
 import Data.Int
+import Data.Bits
+import Control.Monad(foldM)
+
+import Numeric
+import Foreign.Storable
 
 #include <libbf.h>
 
@@ -144,6 +151,7 @@ bf2 f (BF fptr1) (BF fptr2) =
 
 -- | Indicates if a number is positive or negative.
 data Sign = Pos {- ^ Positive -} | Neg {- ^ Negative -}
+             deriving (Eq,Show)
 
 
 foreign import ccall "bf_set_nan"
@@ -420,5 +428,35 @@ toString radix (ShowFmt ds flags) = bf1 (\inp ->
   ))
 
 
+-- The number is @bfrBits ^ (bfrExp - bfrBias)@
+data BFRep = BFRep
+  { bfrSign :: !Sign
+  , bfrExp  :: !Int64
+  , bfrBits :: !Integer
+  , bfrBias :: !Int64
+  } deriving Show
 
+-- | Get the represnetation of the number.
+toRep :: BF -> IO BFRep
+toRep = bf1 (\ptr ->
+  do s <- #{peek bf_t, sign} ptr
+     e <- #{peek bf_t, expn} ptr
+     l <- #{peek bf_t, len}  ptr
+     p <- #{peek bf_t, tab}  ptr
+     let sgn = if asBool s then Neg else Pos
+         len = fromIntegral (l :: Word64) :: Int
+         -- This should not really limit precision as it counts
+         -- number of Word64s (not bytes)
+
+         step x i = do w <- peekElemOff p i
+                       pure ((x `shiftL` 64) + fromIntegral (w :: Word64))
+
+     base <- foldM step 0 (reverse (take len [ 0 .. ]))
+
+     pure BFRep { bfrSign = sgn
+                , bfrBits = base
+                , bfrExp  = e
+                , bfrBias = 64 * fromIntegral len
+                }
+  )
 

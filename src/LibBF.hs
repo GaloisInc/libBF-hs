@@ -21,6 +21,9 @@ module LibBF
   , bfToDouble
   , bfToString
 
+  , bfUnsafeThaw
+  , bfUnsafeFreeze
+
   , module LibBF.Opts
   ) where
 
@@ -149,6 +152,12 @@ bfToDouble r (BigFloat x) = unsafe (toDouble r x)
 bfToString :: Int -> ShowFmt -> BigFloat -> String
 bfToString radix opts (BigFloat x) =
   unsafe (toString radix opts x)
+
+bfUnsafeThaw :: BigFloat -> BF
+bfUnsafeThaw (BigFloat x) = x
+
+bfUnsafeFreeze :: BF -> BigFloat
+bfUnsafeFreeze = BigFloat
 
 --------------------------------------------------------------------------------
 
