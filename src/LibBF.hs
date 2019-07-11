@@ -11,6 +11,7 @@ module LibBF
   , bfFromWord
   , bfFromInt
   , bfFromDouble
+  , bfFromInteger
   , bfToDouble
   , bfToString
   , bfToRep
@@ -34,6 +35,9 @@ module LibBF
   , bfUnsafeThaw
   , bfUnsafeFreeze
 
+    -- * Limits
+
+
     -- * Configuration
   , module LibBF.Opts
   ) where
@@ -56,7 +60,7 @@ instance NFData BigFloat where
 
 
 instance Show BigFloat where
-  show = bfToString 10 (showFixed 25)
+  show = bfToString 16 (showFreeMin Nothing <> addPrefix)
 
 --------------------------------------------------------------------------------
 {-# NOINLINE ctxt #-}
@@ -77,7 +81,7 @@ newBigFloat' f = unsafe $
      pure (BigFloat bf, a)
 
 unsafe :: IO a -> a
-unsafe = unsafeDupablePerformIO
+unsafe = unsafePerformIO
 
 --------------------------------------------------------------------------------
 -- Constants
@@ -113,6 +117,9 @@ bfFromInt = newBigFloat . setInt
 -- | A floating point number corresponding to the given double.
 bfFromDouble :: Double -> BigFloat
 bfFromDouble = newBigFloat . setDouble
+
+bfFromInteger :: Integer -> BigFloat
+bfFromInteger = newBigFloat . setInteger
 
 instance Eq BigFloat where
   BigFloat x == BigFloat y = unsafe (cmpEq x y)

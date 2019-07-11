@@ -29,11 +29,11 @@ rnd :: RoundMode -> BFOpts
 rnd (RoundMode r) = BFOpts 0 r
 
 
--- | The smallest supported precision.
+-- | The smallest supported precision (in bits).
 foreign import capi "libbf.h value BF_PREC_MIN"
   precMin :: Int
 
--- | The largest supported precision.
+-- | The largest supported precision (in bits).
 foreign import capi "libbf.h value BF_PREC_MAX"
   precMax :: Int
 
@@ -57,6 +57,7 @@ foreign import capi "libbf.h value BF_EXP_BITS_MIN"
 {-| The largest number of exponent bits supported. -}
 foreign import capi "libbf.h value BF_EXP_BITS_MAX"
   expBitsMax :: Int
+
 
 
 --------------------------------------------------------------------------------

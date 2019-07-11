@@ -13,6 +13,7 @@ module LibBF.Mutable
   , setWord
   , setInt
   , setDouble
+  , setInteger
   , setBF
 
     -- * Queries and Comparisons
@@ -36,6 +37,8 @@ module LibBF.Mutable
   , frem
   , fsqrt
   , fpowWord
+  , fpowWordWord
+  , fpow
   , fround
   , frint
 
@@ -123,7 +126,7 @@ asOrd x
 
 
 bf1 :: (Ptr BF -> IO a) -> BF -> IO a
-bf1 f (BF fptr) = withForeignPtr fptr f
+bf1 f (BF fout) = withForeignPtr fout f
 
 bfQuery :: (Ptr BF -> IO CInt) -> BF -> IO Bool
 bfQuery f = bf1 (fmap asBool . f)
@@ -135,11 +138,21 @@ bfOrd :: (Ptr BF -> Ptr BF -> IO CInt) -> BF -> BF -> IO Ordering
 bfOrd f = bf2 (\x y -> asOrd <$> f x y)
 
 bf2 :: (Ptr BF -> Ptr BF -> IO a) -> BF -> BF -> IO a
-bf2 f (BF fptr1) (BF fptr2) =
-  withForeignPtr fptr1 (\ptr1 ->
-  withForeignPtr fptr2 (\ptr2 ->
-    f ptr1 ptr2
+bf2 f (BF fin1) (BF fout) =
+  withForeignPtr fin1 (\in1 ->
+  withForeignPtr fout (\out1 ->
+    f out1 in1
   ))
+
+bf3 :: (Ptr BF -> Ptr BF -> Ptr BF -> IO a) -> BF -> BF -> BF -> IO a
+bf3 f (BF fin1) (BF fin2) (BF fout) =
+  withForeignPtr fin1 (\in1 ->
+  withForeignPtr fin2 (\in2 ->
+  withForeignPtr fout (\out ->
+    f out in1 in2
+  )))
+
+
 
 
 
@@ -149,7 +162,7 @@ bf2 f (BF fptr1) (BF fptr2) =
 
 
 -- | Indicates if a number is positive or negative.
-data Sign = Pos {- ^ Positive -} | Neg {- ^ Negative -}
+data Sign = Pos {-^ Positive -} | Neg {-^ Negative -}
              deriving (Eq,Show)
 
 
@@ -192,6 +205,53 @@ foreign import ccall "bf_set_si"
 setInt :: Int64 -> BF -> IO ()
 setInt s = bf1 (`bf_set_si` s)
 
+foreign import capi "libbf.h bf_realloc"
+  bf_realloc :: Ptr BFContext -> Ptr a -> CSize -> IO (Ptr a)
+
+
+{-| Assign from an Integer. -}
+setInteger :: Integer -> BF -> IO ()
+setInteger n0
+  | n0 == 0   = setZero Pos
+  | otherwise = bf1 $ \ptr ->
+    do ctxt       <- #{peek bf_t,ctx} ptr
+       oldLimbPtr <- #{peek bf_t,tab} ptr
+       let sz = len * #{size limb_t}
+       limbPtr <- bf_realloc ctxt oldLimbPtr (fromIntegral sz)
+       #{poke bf_t,tab} ptr limbPtr
+       #{poke bf_t,len} ptr len
+       e <- assign limbPtr n0 0
+       #{poke bf_t,sign} ptr (if n0 < 0 then 1 else (0 :: CInt))
+       #{poke bf_t,expn} ptr e
+
+  where
+  val = abs n0
+
+  len :: Int
+  len = countChunks 1 val
+
+  assign :: Ptr LimbT -> Integer -> Int -> IO Int
+  assign ptr b i
+    | i == len - 1 = do let v = leastChunk b
+                            z = countLeadingZeros v
+                        pokeElemOff ptr (fromIntegral i) (v `shiftL` z)
+                        pure (64 * (len - 1) + unit - z)
+
+    | otherwise   = do pokeElemOff ptr (fromIntegral i) (leastChunk b)
+                       assign ptr (b `shiftR` unit) (i+1)
+
+  leastChunk :: Integer -> LimbT
+  leastChunk n = fromIntegral (n .&. (fromIntegral unit - 1))
+
+  unit  = #{const LIMB_BITS} :: Int
+  chunk = (1 `shiftL` unit)
+
+  countChunks :: Int -> Integer -> Int
+  countChunks b n
+    | n < chunk = b
+    | otherwise = let b1 = b + 1
+                  in b1 `seq` countChunks b1 (n `shiftR` unit)
+
 
 foreign import ccall "bf_set_float64"
   bf_set_float64 :: Ptr BF -> Double -> IO ()
@@ -206,7 +266,7 @@ foreign import ccall "bf_set"
 
 {-| Assign from another number. -}
 setBF :: BF -> BF {-^ This number is changed -} -> IO ()
-setBF = bf2 (flip bf_set)
+setBF = bf2 (\out in1 -> bf_set out in1)
 
 
 --------------------------------------------------------------------------------
@@ -324,6 +384,9 @@ foreign import ccall "bf_pow_ui"
 foreign import ccall "bf_pow_ui_ui"
   bf_pow_ui_ui :: Ptr BF -> LimbT -> LimbT -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_pow"
+  bf_pow :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
 foreign import ccall "bf_round"
   bf_round :: Ptr BF -> LimbT -> FlagsT -> IO Status
 
@@ -381,7 +444,7 @@ frem = bfArith bf_remainder
 -- | Compute the square root of the first number and store the result
 -- in the second.
 fsqrt :: BFOpts -> BF -> BF -> IO Status
-fsqrt (BFOpts p f) = bf2 (\inp res -> bf_sqrt res inp p f)
+fsqrt (BFOpts p f) = bf2 (\res inp -> bf_sqrt res inp p f)
 
 -- | Round to the nearest float matching the configuration parameters.
 fround :: BFOpts -> BF -> IO Status
@@ -391,9 +454,26 @@ fround (BFOpts p f) = bf1 (\ptr -> bf_round ptr p f)
 frint :: BFOpts -> BF -> IO Status
 frint (BFOpts p f) = bf1 (\ptr -> bf_rint ptr p f)
 
+-- | Exponentiate the first number by the give (word) exponent,
+-- and store the result in the second number.
 fpowWord :: BFOpts -> BF -> Word64 -> BF -> IO Status
 fpowWord (BFOpts prec flags) base po x =
-  bf2 (\inp res -> bf_pow_ui res inp po prec flags) base x
+  bf2 (\out inp -> bf_pow_ui out inp po prec flags) base x
+
+-- | Exponentiate the first word to the power of the second word
+-- and store the result in the 'BF'.
+fpowWordWord :: BFOpts -> Word64 -> Word64 -> BF -> IO Status
+fpowWordWord (BFOpts prec flags) inp po x =
+  bf1 (\res -> bf_pow_ui_ui res inp po prec flags) x
+
+-- | Exponentiate the first number by the second,
+-- and store the result in the third number.
+fpow :: BFOpts -> BF -> BF -> BF -> IO Status
+fpow (BFOpts prec flags) base po x =
+  bf3 (\in1 in2 out -> bf_pow out in1 in2 prec flags) base po x
+
+
+
 
 
 --------------------------------------------------------------------------------
@@ -431,11 +511,11 @@ toString radix (ShowFmt ds flags) = bf1 (\inp ->
 data BFRep = BFRep
   { bfrSign :: !Sign
   , bfrExp  :: !Int64
-  , bfrBits :: !Integer
+  , bfrBits :: !Integer   -- ^ Positive
   , bfrBias :: !Int64
   } deriving Show
 
--- | Get the represnetation of the number.
+-- | Get the represnetation of the number.  XXX: Zero inf.
 toRep :: BF -> IO BFRep
 toRep = bf1 (\ptr ->
   do s <- #{peek bf_t, sign} ptr
