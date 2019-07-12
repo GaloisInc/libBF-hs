@@ -30,8 +30,11 @@ module LibBF.Mutable
     -- * Arithmetic
   , fneg
   , fadd
+  , faddInt
   , fsub
   , fmul
+  , fmulInt
+  , fmulWord
   , fdiv
   , fmod
   , frem
@@ -49,6 +52,7 @@ module LibBF.Mutable
 
   -- * Configuration
   , module LibBF.Opts
+  , toChunks
 
   ) where
 
@@ -62,7 +66,8 @@ import Foreign.C.String
 import Data.Word
 import Data.Int
 import Data.Bits
-import Control.Monad(foldM)
+import Data.List(unfoldr)
+import Control.Monad(foldM,when)
 
 import Foreign.Storable
 
@@ -205,52 +210,43 @@ foreign import ccall "bf_set_si"
 setInt :: Int64 -> BF -> IO ()
 setInt s = bf1 (`bf_set_si` s)
 
-foreign import capi "libbf.h bf_realloc"
-  bf_realloc :: Ptr BFContext -> Ptr a -> CSize -> IO (Ptr a)
-
-
-{-| Assign from an Integer. -}
+-- | Set an integer by doing repreated Int64 additions and multiplications.
 setInteger :: Integer -> BF -> IO ()
-setInteger n0
-  | n0 == 0   = setZero Pos
-  | otherwise = bf1 $ \ptr ->
-    do ctxt       <- #{peek bf_t,ctx} ptr
-       oldLimbPtr <- #{peek bf_t,tab} ptr
-       let sz = len * #{size limb_t}
-       limbPtr <- bf_realloc ctxt oldLimbPtr (fromIntegral sz)
-       #{poke bf_t,tab} ptr limbPtr
-       #{poke bf_t,len} ptr len
-       e <- assign limbPtr n0 0
-       #{poke bf_t,sign} ptr (if n0 < 0 then 1 else (0 :: CInt))
-       #{poke bf_t,expn} ptr e
-
+setInteger n0 bf0 =
+  do setZero Pos bf0
+     go (abs n0) bf0
+     when (n0 < 0) (fneg bf0)
   where
-  val = abs n0
+  maxI :: Int64
+  maxI = maxBound
 
-  len :: Int
-  len = countChunks 1 val
+  chunk = toInteger maxI + 1
 
-  assign :: Ptr LimbT -> Integer -> Int -> IO Int
-  assign ptr b i
-    | i == len - 1 = do let v = leastChunk b
-                            z = countLeadingZeros v
-                        pokeElemOff ptr (fromIntegral i) (v `shiftL` z)
-                        pure (64 * (len - 1) + unit - z)
+  go n bf
+    | n == 0 = pure ()
+    | otherwise =
+      do let (next,this) = n `divMod` chunk
+         go next bf
+         Ok <- fmulWord infPrec bf (fromIntegral chunk) bf
+         Ok <- faddInt  infPrec bf (fromIntegral this)  bf
+         pure ()
 
-    | otherwise   = do pokeElemOff ptr (fromIntegral i) (leastChunk b)
-                       assign ptr (b `shiftR` unit) (i+1)
+
+
+-- | Chunk a non-negative integer into words,
+-- least significatn first
+toChunks :: Integer -> [LimbT]
+toChunks = unfoldr step
+  where
+  step n = if n == 0 then Nothing
+                     else Just (leastChunk n, n `shiftR` unit)
+
+  unit = #{const LIMB_BITS} :: Int
+  mask = (1 `shiftL` unit) - 1
 
   leastChunk :: Integer -> LimbT
-  leastChunk n = fromIntegral (n .&. (fromIntegral unit - 1))
+  leastChunk n = fromIntegral (n .&. mask)
 
-  unit  = #{const LIMB_BITS} :: Int
-  chunk = (1 `shiftL` unit)
-
-  countChunks :: Int -> Integer -> Int
-  countChunks b n
-    | n < chunk = b
-    | otherwise = let b1 = b + 1
-                  in b1 `seq` countChunks b1 (n `shiftR` unit)
 
 
 foreign import ccall "bf_set_float64"
@@ -355,11 +351,20 @@ foreign import capi "libbf.h bf_neg"
 foreign import ccall "bf_add"
   bf_add :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_add_si"
+  bf_add_si :: Ptr BF -> Ptr BF -> Int64 -> LimbT -> FlagsT -> IO Status
+
 foreign import ccall "bf_sub"
   bf_sub :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
 foreign import ccall "bf_mul"
   bf_mul :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_mul_si"
+  bf_mul_si :: Ptr BF -> Ptr BF -> Int64 -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_mul_ui"
+  bf_mul_ui :: Ptr BF -> Ptr BF -> Word64 -> LimbT -> FlagsT -> IO Status
 
 foreign import ccall "bf_div"
   bf_div :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -418,6 +423,10 @@ fneg = bf1 bf_neg
 fadd :: BFOpts -> BF -> BF -> BF -> IO Status
 fadd = bfArith bf_add
 
+-- | Add a number and an int64 and store the result in the last.
+faddInt :: BFOpts -> BF -> Int64 -> BF -> IO Status
+faddInt (BFOpts p f) x y z = bf2 (\out in1 -> bf_add_si out in1 y p f) x z
+
 -- | Subtract two numbers, using the given settings, and store the
 -- result in the last.
 fsub :: BFOpts -> BF -> BF -> BF -> IO Status
@@ -427,6 +436,12 @@ fsub = bfArith bf_sub
 -- result in the last.
 fmul :: BFOpts -> BF -> BF -> BF -> IO Status
 fmul = bfArith bf_mul
+
+fmulWord :: BFOpts -> BF -> Word64 -> BF -> IO Status
+fmulWord (BFOpts p f) x y z = bf2 (\out in1 -> bf_mul_ui out in1 y p f) x z
+
+fmulInt :: BFOpts -> BF -> Int64 -> BF -> IO Status
+fmulInt (BFOpts p f) x y z = bf2 (\out in1 -> bf_mul_si out in1 y p f) x z
 
 -- | Divide two numbers, using the given settings, and store the
 -- result in the last.
@@ -507,7 +522,7 @@ toString radix (ShowFmt ds flags) = bf1 (\inp ->
   ))
 
 
--- The number is @bfrBits ^ (bfrExp - bfrBias)@
+-- The number is @bfrBits * 2 ^ (bfrExp - bfrBias)@
 data BFRep = BFRep
   { bfrSign :: !Sign
   , bfrExp  :: !Int64
