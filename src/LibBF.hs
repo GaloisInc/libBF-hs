@@ -24,9 +24,11 @@ module LibBF
   , bfIsLEQ
 
     -- * Arithmetic
+  , bfNeg
   , bfAdd, bfSub, bfMul, bfDiv, bfMod, bfRem
+  , bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
-  , bfPowWord
+  , bfPow, bfPowWord, bfPowWordWord
 
     -- * Rounding
   , bfRoundFloat, bfRoundInt
@@ -154,6 +156,9 @@ bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
 bfIsZero :: BigFloat -> Bool
 bfIsZero (BigFloat x) = unsafe (isZero x)
 
+bfNeg :: BigFloat -> BigFloat
+bfNeg (BigFloat x) = newBigFloat (\bf -> setBF x bf >> fneg bf)
+
 -- | Add two numbers useing the given options.
 bfAdd :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfAdd opt (BigFloat x) (BigFloat y) = newBigFloat' (fadd opt x y)
@@ -162,9 +167,23 @@ bfAdd opt (BigFloat x) (BigFloat y) = newBigFloat' (fadd opt x y)
 bfSub :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfSub opt (BigFloat x) (BigFloat y) = newBigFloat' (fsub opt x y)
 
--- | Multiply two numbers useing the given options.
+-- | Multiply two numbers using the given options.
 bfMul :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfMul opt (BigFloat x) (BigFloat y) = newBigFloat' (fmul opt x y)
+
+-- | Multiply a number and a word, using the given options.
+bfMulWord :: BFOpts -> BigFloat -> Word64 -> (BigFloat,Status)
+bfMulWord opt (BigFloat x) y = newBigFloat' (fmulWord opt x y)
+
+-- | Multiply a number and an int, using the given options.
+bfMulInt :: BFOpts -> BigFloat -> Int64 -> (BigFloat,Status)
+bfMulInt opt (BigFloat x) y = newBigFloat' (fmulInt opt x y)
+
+-- | Multiply a number by @2^e@.
+bfMul2Exp :: BFOpts -> BigFloat -> Int64 -> (BigFloat,Status)
+bfMul2Exp opt (BigFloat x) e = newBigFloat' (\p ->
+  do setBF x p
+     fmul2Exp opt e p)
 
 -- | Divide two numbers useing the given options.
 bfDiv :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
@@ -199,6 +218,14 @@ bfRoundInt opt (BigFloat x) = newBigFloat' (\bf ->
 -- | Exponentiate a float to a positive integer power.
 bfPowWord :: BFOpts -> BigFloat -> Word64 -> (BigFloat, Status)
 bfPowWord opt (BigFloat x) w = newBigFloat' (fpowWord opt x w)
+
+-- | Exponentiate a word to a positive integer power.
+bfPowWordWord :: BFOpts -> Word64 -> Word64 -> (BigFloat, Status)
+bfPowWordWord opts x y = newBigFloat' (fpowWordWord opts x y)
+
+-- | Exponentiate a word to a positive integer power.
+bfPow :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfPow opts (BigFloat x) (BigFloat y) = newBigFloat' (fpow opts x y)
 
 -- | Constant to a 'Double'
 bfToDouble :: RoundMode -> BigFloat -> (Double, Status)

@@ -1,5 +1,6 @@
 {-# Language ForeignFunctionInterface, CApiFFI #-}
 {-# Language PatternSynonyms #-}
+{-# Language MultiWayIf #-}
 module LibBF.Mutable
   ( -- * Allocation
     newContext, BFContext
@@ -35,6 +36,7 @@ module LibBF.Mutable
   , fmul
   , fmulInt
   , fmulWord
+  , fmul2Exp
   , fdiv
   , fmod
   , frem
@@ -167,8 +169,8 @@ bf3 f (BF fin1) (BF fin2) (BF fout) =
 
 
 -- | Indicates if a number is positive or negative.
-data Sign = Pos {-^ Positive -} | Neg {-^ Negative -}
-             deriving (Eq,Show)
+data Sign = Neg {-^ Negative -} | Pos {-^ Positive -} 
+             deriving (Eq,Ord,Show)
 
 
 foreign import ccall "bf_set_nan"
@@ -363,6 +365,9 @@ foreign import ccall "bf_mul_si"
 foreign import ccall "bf_mul_ui"
   bf_mul_ui :: Ptr BF -> Ptr BF -> Word64 -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_mul_2exp"
+  bf_mul_2exp :: Ptr BF -> SLimbT -> LimbT -> FlagsT -> IO Status
+
 foreign import ccall "bf_div"
   bf_div :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
@@ -434,11 +439,19 @@ fsub = bfArith bf_sub
 fmul :: BFOpts -> BF -> BF -> BF -> IO Status
 fmul = bfArith bf_mul
 
+-- | Multiply the number by the given word, and store the result
+-- in the second number.
 fmulWord :: BFOpts -> BF -> Word64 -> BF -> IO Status
 fmulWord (BFOpts p f) x y z = bf2 (\out in1 -> bf_mul_ui out in1 y p f) x z
 
+-- | Multiply the number by the given int, and store the result
+-- in the second number.
 fmulInt :: BFOpts -> BF -> Int64 -> BF -> IO Status
 fmulInt (BFOpts p f) x y z = bf2 (\out in1 -> bf_mul_si out in1 y p f) x z
+
+-- | Multiply the number by @2^e@.
+fmul2Exp :: BFOpts -> Int64 -> BF -> IO Status
+fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out e p f)
 
 -- | Divide two numbers, using the given settings, and store the
 -- result in the last.
@@ -481,8 +494,7 @@ fpowWordWord (BFOpts prec flags) inp po x =
 -- | Exponentiate the first number by the second,
 -- and store the result in the third number.
 fpow :: BFOpts -> BF -> BF -> BF -> IO Status
-fpow (BFOpts prec flags) base po x =
-  bf3 (\in1 in2 out -> bf_pow out in1 in2 prec flags) base po x
+fpow (BFOpts prec flags) = bf3 (\out in1 in2 -> bf_pow out in1 in2 prec flags)
 
 
 
@@ -519,35 +531,42 @@ toString radix (ShowFmt ds flags) = bf1 (\inp ->
   ))
 
 
--- The number is @bfrBits * 2 ^ (bfrExp - bfrBias)@
-data BFRep = BFRep
-  { bfrSign :: !Sign
-  , bfrExp  :: !Int64
-  , bfrBits :: !Integer   -- ^ Positive
-  , bfrBias :: !Int64
-  } deriving Show
+-- | An explicit representation for big nums.
+data BFRep  = BFRep !Sign !BFNum    -- ^ A signed number
+            | BFNaN                 -- ^ Not a number
+              deriving (Eq,Ord,Show)
 
--- | Get the represnetation of the number.  XXX: Zero inf.
+-- | Representations for unsign floating point numbers.
+data BFNum  = Zero                 -- ^ zero
+            | Num Integer !Int64   -- ^ @x * 2 ^ y@
+            | Inf                  -- ^ infinity
+              deriving (Eq,Ord,Show)
+
+-- | Get the represnetation of the number.
 toRep :: BF -> IO BFRep
 toRep = bf1 (\ptr ->
   do s <- #{peek bf_t, sign} ptr
-     e <- #{peek bf_t, expn} ptr
-     l <- #{peek bf_t, len}  ptr
-     p <- #{peek bf_t, tab}  ptr
      let sgn = if asBool s then Neg else Pos
-         len = fromIntegral (l :: Word64) :: Int
-         -- This should not really limit precision as it counts
-         -- number of Word64s (not bytes)
+     e <- #{peek bf_t, expn} ptr
+     if | e == #{const BF_EXP_NAN}  -> pure BFNaN
+        | e == #{const BF_EXP_INF}  -> pure (BFRep sgn Inf)
+        | e == #{const BF_EXP_ZERO} -> pure (BFRep sgn Zero)
+        | otherwise ->
+        do l <- #{peek bf_t, len}  ptr
+           p <- #{peek bf_t, tab}  ptr
+           let len = fromIntegral (l :: Word64) :: Int
+               -- This should not really limit precision as it counts
+               -- number of Word64s (not bytes)
 
-         step x i = do w <- peekElemOff p i
-                       pure ((x `shiftL` 64) + fromIntegral (w :: Word64))
+               step x i = do w <- peekElemOff p i
+                             pure ((x `shiftL` 64) + fromIntegral (w :: Word64))
 
-     base <- foldM step 0 (reverse (take len [ 0 .. ]))
+           base <- foldM step 0 (reverse (take len [ 0 .. ]))
+           let bias = 64 * fromIntegral len
+               norm bs bi
+                 | even bs    = norm (bs `shiftR` 1) (bi - 1)
+                 | otherwise  = BFRep sgn (Num bs (e - bi))
 
-     pure BFRep { bfrSign = sgn
-                , bfrBits = base
-                , bfrExp  = e
-                , bfrBias = 64 * fromIntegral len
-                }
+           pure (norm base bias) -- (BFRep sgn (Num base (e - bias)))
   )
 

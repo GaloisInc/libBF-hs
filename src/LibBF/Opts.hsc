@@ -2,21 +2,26 @@
 module LibBF.Opts where
 
 import Data.Word
+import Data.Int
 import Foreign.C.Types
 import Data.Bits
 import Data.List
 #include <libbf.h>
 
 type LimbT = #{type limb_t}
+type SLimbT = #{type slimb_t}
 type FlagsT = #{type bf_flags_t}
 
+-- | Specifies various computation settings, combined with 'Semigroup'.
 data BFOpts = BFOpts !LimbT !FlagsT
 
 instance Semigroup BFOpts where
   BFOpts l f <> BFOpts l1 f1 = BFOpts (max l l1) (f .|. f1)
 
 
--- | Use infinite precision.
+-- | Use infinite precision.  This should be used with caution,
+-- as it could exhause memory, and at the moment the library
+-- does not handle this gracefully at all (core dumps).
 infPrec :: BFOpts
 infPrec = BFOpts #{const BF_PREC_INF} 0
 
@@ -25,15 +30,17 @@ infPrec = BFOpts #{const BF_PREC_INF} 0
 precBits :: Int -> BFOpts
 precBits n = BFOpts (fromIntegral n) 0
 
+-- | Use the given rounding mode.
+-- If none is specified, then the default is 'NearEven'.
 rnd :: RoundMode -> BFOpts
 rnd (RoundMode r) = BFOpts 0 r
-
 
 -- | The smallest supported precision (in bits).
 foreign import capi "libbf.h value BF_PREC_MIN"
   precMin :: Int
 
 -- | The largest supported precision (in bits).
+-- Memory could run out before we run out of precision.
 foreign import capi "libbf.h value BF_PREC_MAX"
   precMax :: Int
 
@@ -46,7 +53,7 @@ foreign import capi "libbf.h bf_set_exp_bits"
   bf_set_exp_bits :: CInt -> FlagsT
 
 -- | Set how many bits to use to represent the exponent.
--- Should fit in the range defined by "expBitsMin" "expBitsMax"
+-- Should fit in the range defined by 'expBitsMin' and 'expBitsMax'.
 expBits :: Int -> BFOpts
 expBits n = BFOpts 0 (bf_set_exp_bits (fromIntegral n))
 
@@ -62,13 +69,25 @@ foreign import capi "libbf.h value BF_EXP_BITS_MAX"
 
 --------------------------------------------------------------------------------
 
+float16:: RoundMode -> BFOpts
+float16 r = rnd r <> precBits 11 <> expBits 5
+
+float32 :: RoundMode -> BFOpts
+float32 r = rnd r <> precBits 24 <> expBits 8
+
 float64 :: RoundMode -> BFOpts
 float64 r = rnd r <> precBits 53 <> expBits 11
 
+float128 :: RoundMode -> BFOpts
+float128 r = rnd r <> precBits 113 <> expBits 15
+
+float256 :: RoundMode -> BFOpts
+float256 r = rnd r <> precBits 237 <> expBits 19
 
 
 --------------------------------------------------------------------------------
 
+-- | Settings for rendering numbers as 'String'.
 data ShowFmt = ShowFmt !LimbT !FlagsT
 
 -- | Use this rounding mode.
@@ -78,11 +97,11 @@ showRnd (RoundMode r) = ShowFmt 1 r
 instance Semigroup ShowFmt where
   ShowFmt a x <> ShowFmt b y = ShowFmt (max a b) (x .|. y)
 
-{-| Show this many significant digits after the decimal point. -}
+{-| Show this many significant digits total . -}
 showFixed :: Word64 -> ShowFmt
 showFixed n = ShowFmt n #{const BF_FTOA_FORMAT_FIXED}
 
-{-| Show this many digits after the floating point. -}
+{-| Show this many digits after the decimal point. -}
 showFrac :: Word64 -> ShowFmt
 showFrac n = ShowFmt n #{const BF_FTOA_FORMAT_FRAC}
 
@@ -115,6 +134,7 @@ showFreeMin mb = ShowFmt prec #{const BF_FTOA_FORMAT_FREE_MIN}
 addPrefix :: ShowFmt
 addPrefix = ShowFmt 0 #{const BF_FTOA_ADD_PREFIX}
 
+-- | Show in exponential form.
 forceExp :: ShowFmt
 forceExp = ShowFmt 0 #{const BF_FTOA_FORCE_EXP}
 
@@ -163,7 +183,7 @@ newtype Status = Status CInt deriving (Eq,Ord)
 checkStatus :: CInt -> Status -> Bool
 checkStatus n (Status x) = (x .&. n) > 0
 
--- | Everything went as expected.
+-- | Succeeds if everything is OK (
 pattern Ok :: Status
 pattern Ok = Status 0
 
