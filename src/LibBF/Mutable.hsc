@@ -217,10 +217,7 @@ setInteger n0 bf0 =
      go (abs n0) bf0
      when (n0 < 0) (fneg bf0)
   where
-  maxI :: Int64
-  maxI = maxBound
-
-  chunk = toInteger maxI + 1
+  chunk = toInteger (maxBound :: Int64) + 1
 
   go n bf
     | n == 0 = pure ()
