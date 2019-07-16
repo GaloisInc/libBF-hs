@@ -20,8 +20,10 @@ module LibBF
   , bfIsFinite
   , bfIsZero
   , bfIsNaN
-  , bfIsLT
-  , bfIsLEQ
+  , bfCompare
+  , bfSign
+  , bfExponent
+  , Sign(..)
 
     -- * Arithmetic
   , bfNeg
@@ -123,8 +125,15 @@ bfFromDouble = newBigFloat . setDouble
 bfFromInteger :: Integer -> BigFloat
 bfFromInteger = newBigFloat . setInteger
 
+-- | IEEE 754 equality
 instance Eq BigFloat where
   BigFloat x == BigFloat y = unsafe (cmpEq x y)
+
+-- | IEEE 754 comparisons
+instance Ord BigFloat where
+  BigFloat x < BigFloat y  = unsafe (cmpLT x y)
+  BigFloat x <= BigFloat y = unsafe (cmpLEQ x y)
+
 
 {-| Compare the two numbers.  The special values are ordered like this:
 
@@ -134,15 +143,9 @@ instance Eq BigFloat where
 
 Note that these differ from 'bfIsLT' and 'bfIsLEQ'.
 -}
-instance Ord BigFloat where
-  compare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
+bfCompare :: BigFloat -> BigFloat -> Ordering
+bfCompare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
 
--- | Compare two 
-bfIsLT :: BigFloat -> BigFloat -> Bool
-bfIsLT (BigFloat x) (BigFloat y) = unsafe (cmpLT x y)
-
-bfIsLEQ :: BigFloat -> BigFloat -> Bool
-bfIsLEQ (BigFloat x) (BigFloat y) = unsafe (cmpLEQ x y)
 
 -- | Is this a "normal" (i.e., non-infinite, non NaN) number.
 bfIsFinite :: BigFloat -> Bool
@@ -151,6 +154,15 @@ bfIsFinite (BigFloat x) = unsafe (isFinite x)
 -- | Is this value NaN.
 bfIsNaN :: BigFloat -> Bool
 bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
+
+-- | Get the sign of a number.  Assumes the input is not NaN.
+bfSign :: BigFloat -> Maybe Sign
+bfSign (BigFloat x) = unsafe (getSign x)
+
+-- | Get the exponent for the given number.
+-- Infinity, zero and NaN do not have an exponent.
+bfExponent :: BigFloat -> Maybe Int64
+bfExponent (BigFloat x) = unsafe (getExp x)
 
 -- | Is this value a zero.
 bfIsZero :: BigFloat -> Bool
@@ -232,7 +244,7 @@ bfToDouble :: RoundMode -> BigFloat -> (Double, Status)
 bfToDouble r (BigFloat x) = unsafe (toDouble r x)
 
 -- | Render as a 'String', using the given settings.
-bfToString :: Int -> ShowFmt -> BigFloat -> String
+bfToString :: Int {- ^ Base -} -> ShowFmt -> BigFloat -> String
 bfToString radix opts (BigFloat x) =
   unsafe (toString radix opts x)
 

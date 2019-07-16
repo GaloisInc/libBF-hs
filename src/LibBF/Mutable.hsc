@@ -23,6 +23,8 @@ module LibBF.Mutable
   , cmpLEQ
   , cmpAbs
   , cmp
+  , getSign
+  , getExp
 
   , isFinite
   , LibBF.Mutable.isNaN
@@ -122,6 +124,9 @@ signToC s = case s of
               Pos -> 0
               Neg -> 1
 
+asSign :: CInt -> Sign
+asSign s = if s == 0 then Pos else Neg
+
 asBool :: CInt -> Bool
 asBool = (/= 0)
 
@@ -139,10 +144,10 @@ bfQuery :: (Ptr BF -> IO CInt) -> BF -> IO Bool
 bfQuery f = bf1 (fmap asBool . f)
 
 bfRel :: (Ptr BF -> Ptr BF -> IO CInt) -> BF -> BF -> IO Bool
-bfRel f = bf2 (\x y -> asBool <$> f x y)
+bfRel f = bf2 (\x y -> asBool <$> f y x)
 
 bfOrd :: (Ptr BF -> Ptr BF -> IO CInt) -> BF -> BF -> IO Ordering
-bfOrd f = bf2 (\x y -> asOrd <$> f x y)
+bfOrd f = bf2 (\x y -> asOrd <$> f y x)
 
 bf2 :: (Ptr BF -> Ptr BF -> IO a) -> BF -> BF -> IO a
 bf2 f (BF fin1) (BF fout) =
@@ -541,6 +546,24 @@ data BFNum  = Zero                 -- ^ zero
             | Num Integer !Int64   -- ^ @x * 2 ^ y@
             | Inf                  -- ^ infinity
               deriving (Eq,Ord,Show)
+
+-- | Returns 'Nothing' for 'NaN'
+getSign :: BF -> IO (Maybe Sign)
+getSign = bf1 (\ptr ->
+  do e <- #{peek bf_t, expn} ptr
+     if (e :: SLimbT) == #{const BF_EXP_NAN}
+        then pure Nothing
+        else (Just . asSign) <$> #{peek bf_t, sign} ptr)
+
+-- | Get the exponent of the number.
+-- Returns 'Nothing' for inifinity, zero and NaN.
+getExp :: BF -> IO (Maybe Int64)
+getExp = bf1 (\ptr ->
+  do e <- #{peek bf_t, expn} ptr
+     pure $! if (e :: SLimbT) < #{const BF_EXP_INF} &&
+                e > #{const BF_EXP_ZERO} then Just (fromIntegral e)
+                                         else Nothing)
+
 
 -- | Get the represnetation of the number.
 toRep :: BF -> IO BFRep
