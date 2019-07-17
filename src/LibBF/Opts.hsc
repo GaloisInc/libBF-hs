@@ -144,6 +144,7 @@ forceExp = ShowFmt 0 #{const BF_FTOA_FORCE_EXP}
 
 --------------------------------------------------------------------------------
 newtype RoundMode = RoundMode FlagsT
+                      deriving Show
 
 {-| Round to nearest, ties go to even. -}
 pattern NearEven :: RoundMode
