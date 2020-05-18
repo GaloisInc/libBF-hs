@@ -477,20 +477,22 @@ toDouble r = bf1 (\inp ->
 
 
 foreign import ccall "bf_ftoa"
-  bf_ftoa :: Ptr CString -> Ptr BF -> CInt -> LimbT -> FlagsT -> IO CSize
-
+  bf_ftoa :: Ptr CSize -> Ptr BF -> CInt -> LimbT -> FlagsT -> IO CString
 
 -- | Render a big-float as a Haskell string.
 -- The radix should not exceed 'LibBF.Opts.maxRadix'.
 toString :: Int -> ShowFmt -> BF -> IO String
-toString radix (ShowFmt ds flags) = bf1 (\inp ->
-  alloca (\out ->
-  do _ <- bf_ftoa out inp (fromIntegral radix) ds flags
-     ptr <- peek out
-     res <- peekCString ptr
-     free ptr
-     pure res
-  ))
+toString radix (ShowFmt ds flags) =
+  bf1 \inp ->
+  alloca \out ->
+  do ptr <- bf_ftoa out inp (fromIntegral radix) ds flags
+     len <- peek out
+     if len > 0
+       then
+         do res <- peekCString ptr
+            free ptr
+            pure res
+       else pure "(error)" -- XXX: throw an exception
 
 
 -- | An explicit representation for big nums.
