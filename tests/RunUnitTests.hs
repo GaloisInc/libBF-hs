@@ -10,7 +10,8 @@ import LibBF
 
 main :: IO ()
 main =
-  do dblTest "+" (+) (bfAdd (float64 NearEven)) 1 2
+  do putStrLn $ bfToString 16 (showFree Nothing) bfNaN
+     dblTest "+" (+) (bfAdd (float64 NearEven)) 1 2
      dblTest "/" (/) (bfDiv (float64 NearEven)) 1 0
 
 check :: String -> Bool -> IO ()
