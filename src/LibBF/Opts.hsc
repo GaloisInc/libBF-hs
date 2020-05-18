@@ -1,5 +1,67 @@
 {-# Language PatternSynonyms, CApiFFI, ViewPatterns #-}
-module LibBF.Opts where
+-- | Configuration and results for FP computation.
+module LibBF.Opts
+  (  -- * Options
+    BFOpts(..)
+  , allowSubnormal
+
+    -- ** Presets
+  , float16
+  , float32
+  , float64
+  , float128
+  , float256
+
+    -- ** Precision
+  , precBits
+  , precMin
+  , precMax
+  , infPrec
+
+    -- ** Exponent Size
+  , expBits
+  , expBitsMin
+  , expBitsMax
+
+    -- ** Rounding mode
+  , rnd
+  , RoundMode(..)
+  , pattern NearEven
+  , pattern ToZero
+  , pattern ToNegInf
+  , pattern ToPosInf
+  , pattern NearAway
+  , pattern Away
+  , pattern Faithful
+
+
+  -- ** Pretty printing options
+  , ShowFmt(..)
+  , showRnd
+  , showFixed
+  , showFrac
+  , showFree
+  , showFreeMin
+  , addPrefix
+  , forceExp
+  , radixMax
+
+  -- * Status
+  , Status(..)
+  , pattern Ok
+  , pattern InvalidOp
+  , pattern DivideByZero
+  , pattern Overflow
+  , pattern Underflow
+  , pattern Inexact
+  , pattern MemError
+
+  -- * Internal
+  , LimbT
+  , SLimbT
+  , FlagsT
+  )
+  where
 
 import Data.Word
 import Data.Int
@@ -8,8 +70,13 @@ import Data.Bits
 import Data.List
 #include <libbf.h>
 
-type LimbT = #{type limb_t}
+-- | Internal: type for limbs
+type LimbT  = #{type limb_t}
+
+-- | Internal: type for signed limbs
 type SLimbT = #{type slimb_t}
+
+-- | Internal: type for flags
 type FlagsT = #{type bf_flags_t}
 
 -- | Specifies various computation settings, combined with 'Semigroup'.
@@ -26,7 +93,7 @@ infPrec :: BFOpts
 infPrec = BFOpts #{const BF_PREC_INF} 0
 
 -- | Use this many bits to represent the mantissa in the computation.
--- The input should be in the interval defined by "precMin" and "precMax"
+-- The input should be in the interval defined by 'precMin' and 'precMax'
 precBits :: Int -> BFOpts
 precBits n = BFOpts (fromIntegral n) 0
 
@@ -69,18 +136,23 @@ foreign import capi "libbf.h value BF_EXP_BITS_MAX"
 
 --------------------------------------------------------------------------------
 
+-- | Precision 11, exponent 5
 float16:: RoundMode -> BFOpts
 float16 r = rnd r <> precBits 11 <> expBits 5
 
+-- | Precision 24, exponent 8
 float32 :: RoundMode -> BFOpts
 float32 r = rnd r <> precBits 24 <> expBits 8
 
+-- | Precision 53, exponent 11
 float64 :: RoundMode -> BFOpts
 float64 r = rnd r <> precBits 53 <> expBits 11
 
+-- | Precision 113, exponent 15
 float128 :: RoundMode -> BFOpts
 float128 r = rnd r <> precBits 113 <> expBits 15
 
+-- | Precision 237, exponent 19
 float256 :: RoundMode -> BFOpts
 float256 r = rnd r <> precBits 237 <> expBits 19
 
@@ -106,7 +178,7 @@ showFrac :: Word64 -> ShowFmt
 showFrac n = ShowFmt n #{const BF_FTOA_FORMAT_FRAC}
 
 {-| Use as many digits as necessary to match the required precision
-   rounding to nearest and the subnormal+exponent configuration of 'flags'.
+   rounding to nearest and the subnormal+exponent configuration of 'FlagsT'.
    The result is meaningful only if the input is already rounded to
    the wanted precision.
 
@@ -139,10 +211,16 @@ forceExp :: ShowFmt
 forceExp = ShowFmt 0 #{const BF_FTOA_FORCE_EXP}
 
 
+-- | Maximum radix when rendering to a for @bf_atof@ and @bf_froa@.
+foreign import capi "libbf.h value BF_RADIX_MAX"
+  radixMax :: Int
+
+
 
 
 
 --------------------------------------------------------------------------------
+-- | Specifies how to round when the result can't be precise.
 newtype RoundMode = RoundMode FlagsT
                       deriving Show
 
@@ -150,13 +228,9 @@ newtype RoundMode = RoundMode FlagsT
 pattern NearEven :: RoundMode
 pattern NearEven = RoundMode #{const BF_RNDN}
 
-{-| Round to nearest, ties go away from zero. -}
-pattern NearAway :: RoundMode
-pattern NearAway = RoundMode #{const BF_RNDNA}
-
-{-| Round to nearest, ties go up (toward +inf) -}
-pattern NearUp :: RoundMode
-pattern NearUp = RoundMode #{const BF_RNDNU}
+{-| Round toward zero. -}
+pattern ToZero :: RoundMode
+pattern ToZero = RoundMode #{const BF_RNDZ}
 
 {-| Round down (toward -inf). -}
 pattern ToNegInf :: RoundMode
@@ -166,12 +240,16 @@ pattern ToNegInf = RoundMode #{const BF_RNDD}
 pattern ToPosInf :: RoundMode
 pattern ToPosInf = RoundMode #{const BF_RNDU}
 
-{-| Round toward zero. -}
-pattern ToZero :: RoundMode
-pattern ToZero = RoundMode #{const BF_RNDZ}
+{-| Round to nearest, ties go away from zero. -}
+pattern NearAway :: RoundMode
+pattern NearAway = RoundMode #{const BF_RNDNA}
 
-{-| Faithful rounding (nondeterministic, either "ToPosInf" or "ToNegInf").
-    The "Inexact" flag is always set. -}
+{-| Round away from zero -}
+pattern Away :: RoundMode
+pattern Away = RoundMode #{const BF_RNDA}
+
+{-| Faithful rounding (nondeterministic, either 'ToPosInf' or 'ToNegInf').
+    The 'Inexact' flag is always set. -}
 pattern Faithful :: RoundMode
 pattern Faithful = RoundMode #{const BF_RNDF}
 
@@ -184,7 +262,7 @@ newtype Status = Status CInt deriving (Eq,Ord)
 checkStatus :: CInt -> Status -> Bool
 checkStatus n (Status x) = (x .&. n) > 0
 
--- | Succeeds if everything is OK (
+-- | Succeeds if everything is OK.
 pattern Ok :: Status
 pattern Ok = Status 0
 
@@ -212,6 +290,11 @@ pattern Underflow <- (checkStatus #{const BF_ST_UNDERFLOW} -> True)
 pattern Inexact :: Status
 pattern Inexact <- (checkStatus #{const BF_ST_INEXACT} -> True)
   where Inexact = Status #{const BF_ST_INEXACT}
+
+-- | Memory error.  @NaN@ is returned.
+pattern MemError :: Status
+pattern MemError <- (checkStatus #{const BF_ST_MEM_ERROR} -> True)
+  where MemError = Status #{const BF_ST_MEM_ERROR}
 
 instance Show Status where
   show x@(Status i) = case x of

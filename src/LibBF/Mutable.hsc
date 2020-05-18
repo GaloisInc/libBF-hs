@@ -1,6 +1,8 @@
 {-# Language ForeignFunctionInterface, CApiFFI #-}
 {-# Language PatternSynonyms #-}
 {-# Language MultiWayIf #-}
+{-# Language BlockArguments #-}
+-- | Mutable big-float computation.
 module LibBF.Mutable
   ( -- * Allocation
     newContext, BFContext
@@ -40,11 +42,7 @@ module LibBF.Mutable
   , fmulWord
   , fmul2Exp
   , fdiv
-  , fmod
-  , frem
   , fsqrt
-  , fpowWord
-  , fpowWordWord
   , fpow
   , fround
   , frint
@@ -52,7 +50,7 @@ module LibBF.Mutable
   -- * Convert from a number
   , toDouble
   , toString
-  , toRep, BFRep(..)
+  , toRep, BFRep(..), BFNum(..)
 
   -- * Configuration
   , module LibBF.Opts
@@ -61,7 +59,6 @@ module LibBF.Mutable
   ) where
 
 
-import Foreign.Storable(peek)
 import Foreign.Marshal.Alloc(alloca,free)
 import Foreign.Ptr(Ptr,FunPtr)
 import Foreign.ForeignPtr
@@ -109,12 +106,11 @@ foreign import ccall "&bf_delete_hs"
 {-| Allocate a new number.  Starts off as zero. -}
 new :: BFContext -> IO BF
 new (BFContext fctx) =
-  withForeignPtr fctx (\ctx ->
+  withForeignPtr fctx \ctx ->
   do fptr <- mallocForeignPtrBytes #{size bf_t}
      withForeignPtr fptr (bf_init ctx)
      addForeignPtrFinalizer bf_delete fptr
      pure (BF fptr)
-  )
 
 --------------------------------------------------------------------------------
 -- FFI Helpers
@@ -144,25 +140,23 @@ bfQuery :: (Ptr BF -> IO CInt) -> BF -> IO Bool
 bfQuery f = bf1 (fmap asBool . f)
 
 bfRel :: (Ptr BF -> Ptr BF -> IO CInt) -> BF -> BF -> IO Bool
-bfRel f = bf2 (\x y -> asBool <$> f y x)
+bfRel f = bf2 \x y -> asBool <$> f y x
 
 bfOrd :: (Ptr BF -> Ptr BF -> IO CInt) -> BF -> BF -> IO Ordering
-bfOrd f = bf2 (\x y -> asOrd <$> f y x)
+bfOrd f = bf2 \x y -> asOrd <$> f y x
 
 bf2 :: (Ptr BF -> Ptr BF -> IO a) -> BF -> BF -> IO a
 bf2 f (BF fin1) (BF fout) =
-  withForeignPtr fin1 (\in1 ->
-  withForeignPtr fout (\out1 ->
+  withForeignPtr fin1 \in1 ->
+  withForeignPtr fout \out1 ->
     f out1 in1
-  ))
 
 bf3 :: (Ptr BF -> Ptr BF -> Ptr BF -> IO a) -> BF -> BF -> BF -> IO a
 bf3 f (BF fin1) (BF fin2) (BF fout) =
-  withForeignPtr fin1 (\in1 ->
-  withForeignPtr fin2 (\in2 ->
-  withForeignPtr fout (\out ->
+  withForeignPtr fin1 \in1 ->
+  withForeignPtr fin2 \in2 ->
+  withForeignPtr fout \out ->
     f out in1 in2
-  )))
 
 
 
@@ -181,7 +175,7 @@ data Sign = Neg {-^ Negative -} | Pos {-^ Positive -}
 foreign import ccall "bf_set_nan"
   bf_set_nan :: Ptr BF -> IO ()
 
--- | Assign NaN to the number.
+-- | Assign @NaN@ to the number.
 setNaN :: BF -> IO ()
 setNaN (BF fptr) = withForeignPtr fptr bf_set_nan
 
@@ -272,7 +266,7 @@ setBF = bf2 (\out in1 -> bf_set out in1)
 --------------------------------------------------------------------------------
 -- Comparisons
 
-foreign import ccall "bf_cmp_eq"
+foreign import capi "libbf.h bf_cmp_eq"
   bf_cmp_eq :: Ptr BF -> Ptr BF -> IO CInt
 
 {-| Check if the two numbers are equal. -}
@@ -280,7 +274,7 @@ cmpEq :: BF -> BF -> IO Bool
 cmpEq = bfRel bf_cmp_eq
 
 
-foreign import ccall "bf_cmp_lt"
+foreign import capi "libbf.h bf_cmp_lt"
   bf_cmp_lt :: Ptr BF -> Ptr BF -> IO CInt
 
 {-| Check if the first number is strictly less than the second. -}
@@ -288,7 +282,7 @@ cmpLT :: BF -> BF -> IO Bool
 cmpLT = bfRel bf_cmp_lt
 
 
-foreign import ccall "bf_cmp_le"
+foreign import capi "libbf.h bf_cmp_le"
   bf_cmp_le :: Ptr BF -> Ptr BF -> IO CInt
 
 {-| Check if the first number is less than, or equal to, the second. -}
@@ -376,25 +370,6 @@ foreign import ccall "bf_mul_2exp"
 foreign import ccall "bf_div"
   bf_div :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
-foreign import ccall "bf_divrem"
-  bf_divrem :: Ptr BF -> Ptr BF ->
-               Ptr BF -> Ptr BF -> LimbT -> FlagsT -> RoundMode -> IO Status
-
-foreign import ccall "bf_fmod"
-  bf_fmod :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
-
-foreign import ccall "bf_remainder"
-  bf_remainder :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
-
-foreign import ccall "bf_remquo"
-  bf_remquo :: Ptr BF -> Ptr BF ->
-               Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
-
-foreign import ccall "bf_pow_ui"
-  bf_pow_ui :: Ptr BF -> Ptr BF -> LimbT -> LimbT -> FlagsT -> IO Status
-
-foreign import ccall "bf_pow_ui_ui"
-  bf_pow_ui_ui :: Ptr BF -> LimbT -> LimbT -> LimbT -> FlagsT -> IO Status
 
 foreign import ccall "bf_pow"
   bf_pow :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -413,10 +388,10 @@ foreign import ccall "bf_sqrt"
 bfArith :: (Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status) ->
            BFOpts -> BF -> BF -> BF -> IO Status
 bfArith fun (BFOpts prec flags) (BF fa) (BF fb) (BF fr) =
-  withForeignPtr fa (\a ->
-  withForeignPtr fb (\b ->
-  withForeignPtr fr (\r ->
-  fun r a b prec flags)))
+  withForeignPtr fa \a ->
+  withForeignPtr fb \b ->
+  withForeignPtr fr \r ->
+  fun r a b prec flags
 
 
 
@@ -463,14 +438,6 @@ fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out e p f)
 fdiv :: BFOpts -> BF -> BF -> BF -> IO Status
 fdiv = bfArith bf_div
 
--- | Compute the modulus of two numbers, and store the result in the last.
-fmod :: BFOpts -> BF -> BF -> BF -> IO Status
-fmod = bfArith bf_fmod
-
--- | Compute the reminder of two numbers, and store the result in the last.
-frem :: BFOpts -> BF -> BF -> BF -> IO Status
-frem = bfArith bf_remainder
-
 -- | Compute the square root of the first number and store the result
 -- in the second.
 fsqrt :: BFOpts -> BF -> BF -> IO Status
@@ -483,18 +450,6 @@ fround (BFOpts p f) = bf1 (\ptr -> bf_round ptr p f)
 -- | Round to the neareset integer.
 frint :: BFOpts -> BF -> IO Status
 frint (BFOpts p f) = bf1 (\ptr -> bf_rint ptr p f)
-
--- | Exponentiate the first number by the give (word) exponent,
--- and store the result in the second number.
-fpowWord :: BFOpts -> BF -> Word64 -> BF -> IO Status
-fpowWord (BFOpts prec flags) base po x =
-  bf2 (\out inp -> bf_pow_ui out inp po prec flags) base x
-
--- | Exponentiate the first word to the power of the second word
--- and store the result in the 'BF'.
-fpowWordWord :: BFOpts -> Word64 -> Word64 -> BF -> IO Status
-fpowWordWord (BFOpts prec flags) inp po x =
-  bf1 (\res -> bf_pow_ui_ui res inp po prec flags) x
 
 -- | Exponentiate the first number by the second,
 -- and store the result in the third number.
@@ -511,6 +466,7 @@ fpow (BFOpts prec flags) = bf3 (\out in1 in2 -> bf_pow out in1 in2 prec flags)
 foreign import ccall "bf_get_float64"
   bf_get_float64 :: Ptr BF -> Ptr Double -> RoundMode -> IO Status
 
+-- | Get the current value of a 'BF' as a Haskell `Double`.
 toDouble :: RoundMode -> BF -> IO (Double, Status)
 toDouble r = bf1 (\inp ->
   alloca (\out ->
@@ -524,7 +480,8 @@ foreign import ccall "bf_ftoa"
   bf_ftoa :: Ptr CString -> Ptr BF -> CInt -> LimbT -> FlagsT -> IO CSize
 
 
-
+-- | Render a big-float as a Haskell string.
+-- The radix should not exceed 'LibBF.Opts.maxRadix'.
 toString :: Int -> ShowFmt -> BF -> IO String
 toString radix (ShowFmt ds flags) = bf1 (\inp ->
   alloca (\out ->
@@ -547,7 +504,7 @@ data BFNum  = Zero                 -- ^ zero
             | Inf                  -- ^ infinity
               deriving (Eq,Ord,Show)
 
--- | Returns 'Nothing' for 'NaN'
+-- | Returns 'Nothing' for @NaN@.
 getSign :: BF -> IO (Maybe Sign)
 getSign = bf1 (\ptr ->
   do e <- #{peek bf_t, expn} ptr

@@ -1,4 +1,6 @@
+{-# Language BlockArguments #-}
 {-# Language Trustworthy #-}
+-- | Computation with high-precision floats.
 module LibBF
   (
     -- * Constants
@@ -27,10 +29,10 @@ module LibBF
 
     -- * Arithmetic
   , bfNeg
-  , bfAdd, bfSub, bfMul, bfDiv, bfMod, bfRem
+  , bfAdd, bfSub, bfMul, bfDiv
   , bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
-  , bfPow, bfPowWord, bfPowWordWord
+  , bfPow
 
     -- * Rounding
   , bfRoundFloat, bfRoundInt
@@ -122,6 +124,7 @@ bfFromInt = newBigFloat . setInt
 bfFromDouble :: Double -> BigFloat
 bfFromDouble = newBigFloat . setDouble
 
+-- | A floating point number corresponding to the given integer.
 bfFromInteger :: Integer -> BigFloat
 bfFromInteger = newBigFloat . setInteger
 
@@ -141,7 +144,7 @@ instance Ord BigFloat where
       * NaN == NaN
       * NaN is larger than all other numbers
 
-Note that these differ from 'bfIsLT' and 'bfIsLEQ'.
+Note that this differs from `(<=)`
 -}
 bfCompare :: BigFloat -> BigFloat -> Ordering
 bfCompare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
@@ -168,6 +171,7 @@ bfExponent (BigFloat x) = unsafe (getExp x)
 bfIsZero :: BigFloat -> Bool
 bfIsZero (BigFloat x) = unsafe (isZero x)
 
+-- | Negate a floating point number.
 bfNeg :: BigFloat -> BigFloat
 bfNeg (BigFloat x) = newBigFloat (\bf -> setBF x bf >> fneg bf)
 
@@ -201,14 +205,6 @@ bfMul2Exp opt (BigFloat x) e = newBigFloat' (\p ->
 bfDiv :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfDiv opt (BigFloat x) (BigFloat y) = newBigFloat' (fdiv opt x y)
 
--- | Modulo of two numbers useing the given options.
-bfMod :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
-bfMod opt (BigFloat x) (BigFloat y) = newBigFloat' (fmod opt x y)
-
--- | Reminder of two numbers useing the given options.
-bfRem :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
-bfRem opt (BigFloat x) (BigFloat y) = newBigFloat' (frem opt x y)
-
 -- | Square root of two numbers useing the given options.
 bfSqrt :: BFOpts -> BigFloat -> (BigFloat,Status)
 bfSqrt opt (BigFloat x) = newBigFloat' (fsqrt opt x)
@@ -226,14 +222,6 @@ bfRoundInt opt (BigFloat x) = newBigFloat' (\bf ->
   do setBF x bf
      frint opt bf
   )
-
--- | Exponentiate a float to a positive integer power.
-bfPowWord :: BFOpts -> BigFloat -> Word64 -> (BigFloat, Status)
-bfPowWord opt (BigFloat x) w = newBigFloat' (fpowWord opt x w)
-
--- | Exponentiate a word to a positive integer power.
-bfPowWordWord :: BFOpts -> Word64 -> Word64 -> (BigFloat, Status)
-bfPowWordWord opts x y = newBigFloat' (fpowWordWord opts x y)
 
 -- | Exponentiate a word to a positive integer power.
 bfPow :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
