@@ -14,8 +14,8 @@ module LibBF.Opts
 
     -- ** Precision
   , precBits
-  , precMin
-  , precMax
+  , precBitsMin
+  , precBitsMax
   , infPrec
 
     -- ** Exponent Size
@@ -104,12 +104,12 @@ rnd (RoundMode r) = BFOpts 0 r
 
 -- | The smallest supported precision (in bits).
 foreign import capi "libbf.h value BF_PREC_MIN"
-  precMin :: Int
+  precBitsMin :: Int
 
 -- | The largest supported precision (in bits).
 -- Memory could run out before we run out of precision.
 foreign import capi "libbf.h value BF_PREC_MAX"
-  precMax :: Int
+  precBitsMax :: Int
 
 {- | Allow denormalized answers. -}
 allowSubnormal :: BFOpts
