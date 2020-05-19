@@ -211,9 +211,15 @@ foreign import ccall "bf_set_si"
 setInt :: Int64 -> BF -> IO ()
 setInt s = bf1 (`bf_set_si` s)
 
--- | Set an integer by doing repreated Int64 additions and multiplications.
+-- | Set an integer.  If the integer is larger than the primitive types,
+-- this does repreated Int64 additions and multiplications.
 setInteger :: Integer -> BF -> IO ()
-setInteger n0 bf0 =
+setInteger n0 bf0
+  | n0 >= 0 && n0 <= toInteger (maxBound :: Word64) =
+    setWord (fromInteger n0) bf0
+  | n0 < 0 && n0 >= toInteger (minBound :: Int64) =
+    setInt (fromInteger n0) bf0
+  | otherwise =
   do setZero Pos bf0
      go (abs n0) bf0
      when (n0 < 0) (fneg bf0)
@@ -228,8 +234,6 @@ setInteger n0 bf0 =
          Ok <- fmulWord infPrec bf (fromIntegral chunk) bf
          Ok <- faddInt  infPrec bf (fromIntegral this)  bf
          pure ()
-
-
 
 -- | Chunk a non-negative integer into words,
 -- least significatn first
