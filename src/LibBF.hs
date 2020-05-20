@@ -17,6 +17,8 @@ module LibBF
   , bfToDouble
   , bfToString
   , bfToRep
+  , BFRep(..)
+  , BFNum(..)
 
     -- * Predicates
   , bfIsFinite
