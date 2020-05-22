@@ -320,7 +320,11 @@ instance Show Status where
                _ -> checkI
 
     checkI = case x of
-               Inexact -> ["Inexact"]
-               _       -> []
+               Inexact -> "Inexact" : checkM
+               _       -> checkM
+
+    checkM = case x of
+               MemError -> ["MemError"]
+               _        -> []
 
 
