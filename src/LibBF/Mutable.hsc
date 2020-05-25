@@ -488,25 +488,28 @@ foreign import ccall "bf_atof"
     Ptr BF -> CString -> Ptr CString -> CInt -> LimbT -> FlagsT -> IO CInt
 
 
--- | The radix should not exceed 'LibBF.Opts.maxRadix'.
--- Assumes the characters in the part of the string coresponding to the number
--- are encoded using 1 byte per character.
-setString :: Int -> BFOpts -> String -> BF -> IO (Maybe (Status, String))
+{- | Set the value to the float parsed out of the given string.
+  * The radix should not exceed 'LibBF.Opts.maxRadix'.
+  * Sets the number to @NaN@ on failure.
+  * Assumes that characters are encoded with a single byte each.
+  * Retruns:
+      - Status for the conversion
+      - How many bytes we consumed
+      - Did we consume the whole input
+-}
+setString :: Int -> BFOpts -> String -> BF -> IO (Status,Int,Bool)
 setString radix (BFOpts prec flags) inStr =
   bf1    \bfPtr ->
   alloca \nextPtr ->
   bracket (getForeignEncoding >>= \e -> setForeignEncoding char8 >> pure e)
           setForeignEncoding
   \_enc ->
-  withCString inStr \strPtr ->
+  withCStringLen inStr \(strPtr,len) ->
   do stat <- bf_atof bfPtr strPtr nextPtr (fromIntegral radix) prec flags
      next <- peek nextPtr
      let consumed = next `minusPtr` strPtr
-     if consumed == 0
-        then pure Nothing
-        else do let str = drop consumed inStr
-                str `seq` pure (Just (Status stat, str))
-
+         usedAll = len == consumed
+     consumed `seq` usedAll `seq` pure (Status stat, consumed, usedAll)
 
 
 foreign import ccall "bf_ftoa"

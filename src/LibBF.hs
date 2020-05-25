@@ -239,15 +239,16 @@ bfToString :: Int {- ^ Base -} -> ShowFmt -> BigFloat -> String
 bfToString radix opts (BigFloat x) =
   unsafe (toString radix opts x)
 
-bfFromString ::
-  Int {- ^ Base -} -> BFOpts -> String -> Maybe (BigFloat,Status,String)
+-- | Parse a number from the given string.
+-- Returns @NaN` if the string does not correspond to a number we recognize.
+bfFromString :: Int {- ^ Base -} -> BFOpts -> String -> (BigFloat,Status)
 bfFromString radix opts str =
-  unsafe
-  do bf <- new ctxt
-     mb <- setString radix opts str bf
-     pure case mb of
-            Nothing       -> Nothing
-            Just (s,next) -> Just (BigFloat bf, s, next)
+  newBigFloat' \bf ->
+  do (status,_,usedAll) <- setString radix opts str bf
+     if usedAll
+        then pure status
+        else do setNaN bf
+                pure Ok
 
 -- | The float as an exponentiated 'Integer'.
 bfToRep :: BigFloat -> BFRep
