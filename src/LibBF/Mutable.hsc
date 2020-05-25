@@ -18,6 +18,7 @@ module LibBF.Mutable
   , setDouble
   , setInteger
   , setBF
+  , setString
 
     -- * Queries and Comparisons
   , cmpEq
@@ -60,7 +61,7 @@ module LibBF.Mutable
 
 
 import Foreign.Marshal.Alloc(alloca,free)
-import Foreign.Ptr(Ptr,FunPtr)
+import Foreign.Ptr(Ptr,FunPtr,minusPtr)
 import Foreign.ForeignPtr
 import Foreign.C.Types
 import Foreign.C.String
@@ -69,6 +70,8 @@ import Data.Int
 import Data.Bits
 import Data.List(unfoldr)
 import Control.Monad(foldM,when)
+import Control.Exception(bracket)
+import GHC.IO.Encoding(getForeignEncoding,setForeignEncoding,char8)
 
 import Foreign.Storable
 
@@ -478,6 +481,32 @@ toDouble r = bf1 (\inp ->
       d <- peek out
       pure (d, s)
   ))
+
+
+foreign import ccall "bf_atof"
+  bf_atof ::
+    Ptr BF -> CString -> Ptr CString -> CInt -> LimbT -> FlagsT -> IO CInt
+
+
+-- | The radix should not exceed 'LibBF.Opts.maxRadix'.
+-- Assumes the characters in the part of the string coresponding to the number
+-- are encoded using 1 byte per character.
+setString :: Int -> BFOpts -> String -> BF -> IO (Maybe (Status, String))
+setString radix (BFOpts prec flags) inStr =
+  bf1    \bfPtr ->
+  alloca \nextPtr ->
+  bracket (getForeignEncoding >>= \e -> setForeignEncoding char8 >> pure e)
+          setForeignEncoding
+  \_enc ->
+  withCString inStr \strPtr ->
+  do stat <- bf_atof bfPtr strPtr nextPtr (fromIntegral radix) prec flags
+     next <- peek nextPtr
+     let consumed = next `minusPtr` strPtr
+     if consumed == 0
+        then pure Nothing
+        else do let str = drop consumed inStr
+                str `seq` pure (Just (Status stat, str))
+
 
 
 foreign import ccall "bf_ftoa"

@@ -14,6 +14,7 @@ module LibBF
   , bfFromInt
   , bfFromDouble
   , bfFromInteger
+  , bfFromString
   , bfToDouble
   , bfToString
   , bfToRep
@@ -237,6 +238,16 @@ bfToDouble r (BigFloat x) = unsafe (toDouble r x)
 bfToString :: Int {- ^ Base -} -> ShowFmt -> BigFloat -> String
 bfToString radix opts (BigFloat x) =
   unsafe (toString radix opts x)
+
+bfFromString ::
+  Int {- ^ Base -} -> BFOpts -> String -> Maybe (BigFloat,Status,String)
+bfFromString radix opts str =
+  unsafe
+  do bf <- new ctxt
+     mb <- setString radix opts str bf
+     pure case mb of
+            Nothing       -> Nothing
+            Just (s,next) -> Just (BigFloat bf, s, next)
 
 -- | The float as an exponentiated 'Integer'.
 bfToRep :: BigFloat -> BFRep

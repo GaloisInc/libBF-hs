@@ -11,6 +11,7 @@ import LibBF
 main :: IO ()
 main =
   do putStrLn $ bfToString 16 (showFree Nothing) bfNaN
+     print (bfFromString 10 (expBits 3 <> precBits 2 <> rnd ToZero) "0.001")
      dblTest "+" (+) (bfAdd (float64 NearEven)) 1 2
      dblTest "/" (/) (bfDiv (float64 NearEven)) 1 0
 
