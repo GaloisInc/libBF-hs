@@ -161,7 +161,7 @@ bfIsFinite (BigFloat x) = unsafe (isFinite x)
 bfIsNaN :: BigFloat -> Bool
 bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
 
--- | Get the sign of a number.  Assumes the input is not NaN.
+-- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`
 bfSign :: BigFloat -> Maybe Sign
 bfSign (BigFloat x) = unsafe (getSign x)
 
