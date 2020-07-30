@@ -18,7 +18,9 @@ source-repository head
   type:     git
   location: https://github.com/GaloisInc/libBF-hs.git
 
-
+flag system-libbf
+  default:     False
+  description: Use system libbf instead
 
 library
   exposed-modules:
@@ -35,18 +37,23 @@ library
 
   hs-source-dirs:      src
 
-  include-dirs:
-    libbf-2020-01-19
+  if flag(system-libbf)
+    extra-libraries: bf
+    c-sources:
+      cbits/libbf-hs.c
+  else
+    include-dirs:
+      libbf-2020-01-19
 
-  includes:
-    libbf-2020-01-19/libbf.h
+    includes:
+      libbf-2020-01-19/libbf.h
 
-  c-sources:
-    libbf-2020-01-19/libbf.h
-    libbf-2020-01-19/cutils.h
-    libbf-2020-01-19/cutils.c
-    libbf-2020-01-19/libbf.c
-    cbits/libbf-hs.c
+    c-sources:
+      libbf-2020-01-19/libbf.h
+      libbf-2020-01-19/cutils.h
+      libbf-2020-01-19/cutils.c
+      libbf-2020-01-19/libbf.c
+      cbits/libbf-hs.c
 
   ghc-options:         -Wall
   default-language:    Haskell2010
