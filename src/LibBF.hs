@@ -220,10 +220,10 @@ bfRoundFloat opt (BigFloat x) = newBigFloat' (\bf ->
   )
 
 -- | Round to an integer using the given parameters.
-bfRoundInt :: BFOpts -> BigFloat -> (BigFloat,Status)
-bfRoundInt opt (BigFloat x) = newBigFloat' (\bf ->
+bfRoundInt :: RoundMode -> BigFloat -> (BigFloat,Status)
+bfRoundInt r (BigFloat x) = newBigFloat' (\bf ->
   do setBF x bf
-     frint opt bf
+     frint r bf
   )
 
 -- | Exponentiate a word to a positive integer power.
