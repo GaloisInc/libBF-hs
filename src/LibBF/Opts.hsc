@@ -259,6 +259,13 @@ pattern Faithful = RoundMode #{const BF_RNDF}
 -- | A set of flags indicating things that might go wrong.
 newtype Status = Status CInt deriving (Eq,Ord)
 
+instance Semigroup Status where
+  Status a <> Status b = Status (a .|. b)
+
+instance Monoid Status where
+  mempty = Ok
+  mappend = (<>)
+
 checkStatus :: CInt -> Status -> Bool
 checkStatus n (Status x) = (x .&. n) > 0
 

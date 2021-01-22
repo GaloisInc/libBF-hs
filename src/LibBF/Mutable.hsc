@@ -43,12 +43,14 @@ module LibBF.Mutable
   , fmulInt
   , fmulWord
   , fmul2Exp
+  , ffma
   , fdiv
   , frem
   , fsqrt
   , fpow
   , fround
   , frint
+
 
   -- * Convert from a number
   , toDouble
@@ -421,6 +423,21 @@ fsub = bfArith bf_sub
 -- result in the last.
 fmul :: BFOpts -> BF -> BF -> BF -> IO Status
 fmul = bfArith bf_mul
+
+-- | Compute the fused-multiply-add.
+--   @ffma opts x y z r@ computes @r := (x*y)+z@.
+ffma :: BFOpts -> BF -> BF -> BF -> BF -> IO Status
+ffma (BFOpts prec f) (BF x) (BF y) (BF z) (BF r) =
+  withForeignPtr x \xp ->
+  withForeignPtr y \yp ->
+  withForeignPtr z \zp ->
+  withForeignPtr r \out ->
+    do s1 <- bf_mul out xp yp #{const BF_PREC_INF} #{const BF_RNDN}
+       case s1 of
+         MemError -> return s1
+         _ ->
+           do s2 <- bf_add out out zp prec f
+              pure (s1 <> s2)
 
 -- | Multiply the number by the given word, and store the result
 -- in the second number.

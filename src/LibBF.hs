@@ -36,7 +36,7 @@ module LibBF
     -- * Arithmetic
   , bfNeg, bfAbs
   , bfAdd, bfSub, bfMul, bfDiv, bfRem
-  , bfMulWord, bfMulInt, bfMul2Exp
+  , bfFMA, bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
   , bfPow
 
@@ -240,6 +240,10 @@ bfDiv opt (BigFloat x) (BigFloat y) = newBigFloat' (fdiv opt x y)
 --   nearest to @x/y@ (with ties broken to even values of @n@).
 bfRem :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
 bfRem opt (BigFloat x) (BigFloat y) = newBigFloat' (frem opt x y)
+
+-- | Compute the fused-multiply-add @(x*y)+z@
+bfFMA :: BFOpts -> BigFloat -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfFMA opt (BigFloat x) (BigFloat y) (BigFloat z) = newBigFloat' (ffma opt x y z)
 
 -- | Square root of two numbers useing the given options.
 bfSqrt :: BFOpts -> BigFloat -> (BigFloat,Status)
