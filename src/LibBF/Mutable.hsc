@@ -385,7 +385,7 @@ foreign import ccall "bf_round"
   bf_round :: Ptr BF -> LimbT -> FlagsT -> IO Status
 
 foreign import ccall "bf_rint"
-  bf_rint :: Ptr BF -> FlagsT -> IO Status
+  bf_rint :: Ptr BF -> CInt -> IO Status
 
 foreign import ccall "bf_sqrt"
   bf_sqrt :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -456,7 +456,7 @@ fround (BFOpts p f) = bf1 (\ptr -> bf_round ptr p f)
 
 -- | Round to the neareset integer.
 frint :: RoundMode -> BF -> IO Status
-frint (RoundMode r) = bf1 (\ptr -> bf_rint ptr r)
+frint (RoundMode r) = bf1 (\ptr -> bf_rint ptr (fromIntegral r :: CInt))
 
 -- | Exponentiate the first number by the second,
 -- and store the result in the third number.
