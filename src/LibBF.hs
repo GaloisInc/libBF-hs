@@ -23,16 +23,19 @@ module LibBF
 
     -- * Predicates
   , bfIsFinite
+  , bfIsInf
   , bfIsZero
   , bfIsNaN
   , bfCompare
   , bfSign
   , bfExponent
+  , bfIsPos
+  , bfIsNeg
   , Sign(..)
 
     -- * Arithmetic
-  , bfNeg
-  , bfAdd, bfSub, bfMul, bfDiv
+  , bfNeg, bfAbs
+  , bfAdd, bfSub, bfMul, bfDiv, bfRem
   , bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
   , bfPow
@@ -161,9 +164,34 @@ bfIsFinite (BigFloat x) = unsafe (isFinite x)
 bfIsNaN :: BigFloat -> Bool
 bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
 
+-- | Is this value infinite
+bfIsInf :: BigFloat -> Bool
+bfIsInf (BigFloat x) = unsafe (isInf x)
+
 -- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`
 bfSign :: BigFloat -> Maybe Sign
 bfSign (BigFloat x) = unsafe (getSign x)
+
+-- | Compute the absolute value of a number.
+bfAbs :: BigFloat -> BigFloat
+bfAbs bf =
+  case bfSign bf of
+    Just Neg -> bfNeg bf
+    _        -> bf
+
+-- | Is this value positive
+bfIsPos :: BigFloat -> Bool
+bfIsPos bf =
+  case bfSign bf of
+    Just Pos -> True
+    _ -> False
+
+-- | Is this value negative
+bfIsNeg :: BigFloat -> Bool
+bfIsNeg bf =
+  case bfSign bf of
+    Just Neg -> True
+    _ -> False
 
 -- | Get the exponent for the given number.
 -- Infinity, zero and NaN do not have an exponent.
@@ -207,6 +235,11 @@ bfMul2Exp opt (BigFloat x) e = newBigFloat' (\p ->
 -- | Divide two numbers useing the given options.
 bfDiv :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfDiv opt (BigFloat x) (BigFloat y) = newBigFloat' (fdiv opt x y)
+
+-- | Compute the remainder @x - y * n@ where @n@ is the integer
+--   nearest to @x/y@ (with ties broken to even values of @n@).
+bfRem :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfRem opt (BigFloat x) (BigFloat y) = newBigFloat' (frem opt x y)
 
 -- | Square root of two numbers useing the given options.
 bfSqrt :: BFOpts -> BigFloat -> (BigFloat,Status)
@@ -267,7 +300,3 @@ bfUnsafeFreeze :: BF -> BigFloat
 bfUnsafeFreeze = BigFloat
 
 --------------------------------------------------------------------------------
-
-
-
-

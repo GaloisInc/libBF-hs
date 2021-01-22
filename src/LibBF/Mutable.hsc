@@ -30,6 +30,7 @@ module LibBF.Mutable
   , getExp
 
   , isFinite
+  , isInf
   , LibBF.Mutable.isNaN
   , isZero
 
@@ -43,6 +44,7 @@ module LibBF.Mutable
   , fmulWord
   , fmul2Exp
   , fdiv
+  , frem
   , fsqrt
   , fpow
   , fround
@@ -171,7 +173,7 @@ bf3 f (BF fin1) (BF fin2) (BF fout) =
 
 
 -- | Indicates if a number is positive or negative.
-data Sign = Neg {-^ Negative -} | Pos {-^ Positive -} 
+data Sign = Neg {-^ Negative -} | Pos {-^ Positive -}
              deriving (Eq,Ord,Show)
 
 
@@ -344,12 +346,6 @@ isNaN = bfQuery bf_is_nan
 isZero :: BF -> IO Bool
 isZero = bfQuery bf_is_zero
 
-
-
-
-
-
-
 foreign import capi "libbf.h bf_neg"
   bf_neg :: Ptr BF -> IO ()
 
@@ -377,6 +373,8 @@ foreign import ccall "bf_mul_2exp"
 foreign import ccall "bf_div"
   bf_div :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_rem"
+  bf_rem :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> CInt -> IO Status
 
 foreign import ccall "bf_pow"
   bf_pow :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -399,8 +397,6 @@ bfArith fun (BFOpts prec flags) (BF fa) (BF fb) (BF fr) =
   withForeignPtr fb \b ->
   withForeignPtr fr \r ->
   fun r a b prec flags
-
-
 
 
 -- | Negate the number.
@@ -444,6 +440,16 @@ fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out e p f)
 -- result in the last.
 fdiv :: BFOpts -> BF -> BF -> BF -> IO Status
 fdiv = bfArith bf_div
+
+-- | Compute the remainder @x - y * n@ where @n@ is the integer
+--   nearest to @x/y@ (with ties broken to even values of @n@).
+--   Output is written into the final argument.
+frem :: BFOpts -> BF -> BF -> BF -> IO Status
+frem (BFOpts p f) (BF fin1) (BF fin2) (BF fout) =
+  withForeignPtr fin1 \in1 ->
+  withForeignPtr fin2 \in2 ->
+  withForeignPtr fout \out ->
+    bf_rem out in1 in2 p f #{const BF_RNDN}
 
 -- | Compute the square root of the first number and store the result
 -- in the second.
@@ -559,8 +565,14 @@ getExp = bf1 (\ptr ->
                 e > #{const BF_EXP_ZERO} then Just (fromIntegral e)
                                          else Nothing)
 
+{-| Check if the given numer is infinite. -}
+isInf :: BF -> IO Bool
+isInf = bf1 (\ptr ->
+  do e <- #{peek bf_t, expn} ptr
+     if | (e :: SLimbT) == #{const BF_EXP_INF} -> pure True
+        | otherwise -> pure False)
 
--- | Get the represnetation of the number.
+-- | Get the representation of the number.
 toRep :: BF -> IO BFRep
 toRep = bf1 (\ptr ->
   do s <- #{peek bf_t, sign} ptr
@@ -587,4 +599,3 @@ toRep = bf1 (\ptr ->
 
            pure (norm base bias) -- (BFRep sgn (Num base (e - bias)))
   )
-
