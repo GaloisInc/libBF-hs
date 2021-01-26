@@ -72,6 +72,7 @@ import Foreign.C.String
 import Data.Word
 import Data.Int
 import Data.Bits
+import Data.Hashable
 import Data.List(unfoldr)
 import Control.Monad(foldM,when)
 import Control.Exception(bracket)
@@ -559,11 +560,21 @@ data BFRep  = BFRep !Sign !BFNum    -- ^ A signed number
             | BFNaN                 -- ^ Not a number
               deriving (Eq,Ord,Show)
 
--- | Representations for unsign floating point numbers.
+instance Hashable BFRep where
+  hashWithSalt s BFNaN           = s `hashWithSalt` (0::Int)
+  hashWithSalt s (BFRep Pos num) = s `hashWithSalt` (1::Int) `hashWithSalt` num
+  hashWithSalt s (BFRep Neg num) = s `hashWithSalt` (2::Int) `hashWithSalt` num
+
+-- | Representations for unsigned floating point numbers.
 data BFNum  = Zero                 -- ^ zero
             | Num Integer !Int64   -- ^ @x * 2 ^ y@
             | Inf                  -- ^ infinity
               deriving (Eq,Ord,Show)
+
+instance Hashable BFNum where
+  hashWithSalt s Zero         = s `hashWithSalt` (0::Int)
+  hashWithSalt s (Num mag ex) = s `hashWithSalt` (1::Int) `hashWithSalt` mag `hashWithSalt` ex
+  hashWithSalt s Inf          = s `hashWithSalt` (2::Int)
 
 -- | Returns 'Nothing' for @NaN@.
 getSign :: BF -> IO (Maybe Sign)

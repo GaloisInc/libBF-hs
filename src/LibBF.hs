@@ -61,6 +61,7 @@ module LibBF
 
 
 import Data.Bits
+import Data.Hashable
 import Data.Word
 import Data.Int
 import System.IO.Unsafe
@@ -148,6 +149,10 @@ instance Eq BigFloat where
 instance Ord BigFloat where
   BigFloat x < BigFloat y  = unsafe (cmpLT x y)
   BigFloat x <= BigFloat y = unsafe (cmpLEQ x y)
+
+
+instance Hashable BigFloat where
+  hashWithSalt s x = hashWithSalt s (bfToRep x)
 
 
 {-| Compare the two numbers.  The special values are ordered like this:
