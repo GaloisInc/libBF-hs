@@ -1,3 +1,4 @@
+{-# Language BangPatterns #-}
 {-# Language BlockArguments #-}
 {-# Language Trustworthy #-}
 -- | Computation with high-precision floats.
@@ -20,12 +21,16 @@ module LibBF
   , bfToRep
   , BFRep(..)
   , BFNum(..)
+  , bfFromBits
+  , bfToBits
 
     -- * Predicates
   , bfIsFinite
   , bfIsInf
   , bfIsZero
   , bfIsNaN
+  , bfIsNormal
+  , bfIsSubnormal
   , bfCompare
   , bfSign
   , bfExponent
@@ -55,6 +60,7 @@ module LibBF
   ) where
 
 
+import Data.Bits
 import Data.Word
 import Data.Int
 import System.IO.Unsafe
@@ -156,7 +162,7 @@ bfCompare :: BigFloat -> BigFloat -> Ordering
 bfCompare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
 
 
--- | Is this a "normal" (i.e., non-infinite, non NaN) number.
+-- | Is this a finite (i.e., non-infinite, non NaN) number.
 bfIsFinite :: BigFloat -> Bool
 bfIsFinite (BigFloat x) = unsafe (isFinite x)
 
@@ -168,7 +174,22 @@ bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
 bfIsInf :: BigFloat -> Bool
 bfIsInf (BigFloat x) = unsafe (isInf x)
 
--- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`
+-- | This is a "normal" number, which means it is not
+--   a NaN, not a zero, not infinite, and not subnormal.
+bfIsNormal :: BFOpts -> BigFloat -> Bool
+bfIsNormal opts bf =
+  case bfToRep bf of
+    rep@(BFRep _sgn (Num _ _)) -> not (repIsSubnormal opts rep)
+    _ -> False
+
+-- | This number is "subnormal", which means it is among the smallest
+--   representable numbers for the given precision and exponent bits.
+--   These numbers differ from "normal" numbers in that they do not use
+--   an implicit leading 1 bit in the binary representation.
+bfIsSubnormal :: BFOpts -> BigFloat -> Bool
+bfIsSubnormal opts bf = repIsSubnormal opts (bfToRep bf)
+
+-- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`.
 bfSign :: BigFloat -> Maybe Sign
 bfSign (BigFloat x) = unsafe (getSign x)
 
@@ -256,7 +277,7 @@ bfRoundFloat opt (BigFloat x) = newBigFloat' (\bf ->
      fround opt bf
   )
 
--- | Round to an integer using the given parameters.
+-- | Round to an integer using the given rounding mode.
 bfRoundInt :: RoundMode -> BigFloat -> (BigFloat,Status)
 bfRoundInt r (BigFloat x) = newBigFloat' (\bf ->
   do setBF x bf
@@ -304,3 +325,104 @@ bfUnsafeFreeze :: BF -> BigFloat
 bfUnsafeFreeze = BigFloat
 
 --------------------------------------------------------------------------------
+
+-- | Make a float using "raw" bits representing the bitvector
+--   representation of a floating-point value with the
+--   exponent and precision bits given by the options.
+bfFromBits ::
+  BFOpts ->
+  Integer {- ^ Raw bits -} ->
+  BigFloat
+
+bfFromBits opts bits
+  | expoBiased == 0 && mant == 0 =            -- zero
+    if isNeg then bfNegZero else bfPosZero
+
+  | expoBiased == eMask && mant ==  0 =       -- infinity
+    if isNeg then bfNegInf else bfPosInf
+
+  | expoBiased == eMask = bfNaN               -- NaN
+
+  | expoBiased == 0 =                         -- Subnormal
+    case bfMul2Exp opts (bfFromInteger mant) (expoVal + 1) of
+      (num,Ok) -> if isNeg then bfNeg num else num
+      (_,s)    -> error $ unwords ["bfFromBits", "Unexpected status:", show s ]
+
+  | otherwise =                               -- Normal
+    case bfMul2Exp opts (bfFromInteger mantVal) expoVal of
+      (num,Ok) -> if isNeg then bfNeg num else num
+      (_,s)    -> error $ unwords ["bfFromBits", "Unexpected status:", show s ]
+
+  where
+  e = getExpBits opts
+  p = getPrecBits opts
+
+  p'         = p - 1                                       :: Int
+  eMask      = (1 `shiftL` e) - 1                          :: Int64
+  pMask      = (1 `shiftL` p') - 1                         :: Integer
+
+  isNeg      = testBit bits (e + p')
+
+  mant       = pMask .&. bits                              :: Integer
+  mantVal    = mant `setBit` p'                            :: Integer
+  -- accounts for the implicit 1 bit
+
+  expoBiased = eMask .&. fromInteger (bits `shiftR` p')    :: Int64
+  bias       = eMask `shiftR` 1                            :: Int64
+  expoVal    = expoBiased - bias - fromIntegral p'         :: Int64
+
+
+-- | Turn a float into raw bits.
+-- @NaN@ is represented as a positive "quiet" @NaN@
+-- (most significant bit in the significand is set, the rest of it is 0).
+bfToBits :: BFOpts -> BigFloat -> Integer
+bfToBits opts bf =  (isNeg      `shiftL` (e + p'))
+                   .|. (expBiased  `shiftL` p')
+                   .|. (mant       `shiftL` 0)
+  where
+  e = getExpBits opts
+  p = getPrecBits opts
+
+  p' = p - 1 :: Int
+
+  eMask = (1 `shiftL` e) - 1   :: Integer
+  pMask = (1 `shiftL` p') - 1   :: Integer
+
+  (isNeg, expBiased, mant) =
+    case bfToRep bf of
+      BFNaN       -> (0,  eMask, 1 `shiftL` (p' - 1))
+      BFRep s num -> (sign, be, ma)
+        where
+        sign = case s of
+                Neg -> 1
+                Pos -> 0
+
+        (be,ma) =
+          case num of
+            Zero     -> (0,0)
+            Num i ev
+              | ex == 0   -> (0, i `shiftL` (p' - m  -1)) -- subnormal case
+              | otherwise -> (ex, (i `shiftL` (p' - m)) .&. pMask) -- normal case
+              where
+              m    = msb 0 i - 1
+              bias = eMask `shiftR` 1
+              ex   = toInteger ev + bias + toInteger m
+
+            Inf -> (eMask,0)
+
+  msb !n j = if j == 0 then n else msb (n+1) (j `shiftR` 1)
+
+-- | test if a given big float representation is subnormal
+repIsSubnormal :: BFOpts -> BFRep -> Bool
+repIsSubnormal opts (BFRep _s (Num i ev)) = ex == 0
+  where
+  e = getExpBits opts
+  eMask = (1 `shiftL` e) - 1   :: Integer
+  bias = eMask `shiftR` 1
+
+  m    = msb (0 :: Int) i - 1
+  ex   = toInteger ev + bias + toInteger m
+
+  msb !n j = if j == 0 then n else msb (n+1) (j `shiftR` 1)
+
+repIsSubnormal _opts _rep = False
