@@ -70,7 +70,6 @@ import LibBF.Mutable as M
 import LibBF.Opts
 import Control.DeepSeq
 
-
 -- | Arbitrary precision floating point numbers.
 newtype BigFloat = BigFloat BF
 
@@ -349,18 +348,20 @@ bfFromBits opts bits
   | expoBiased == eMask = bfNaN               -- NaN
 
   | expoBiased == 0 =                         -- Subnormal
-    case bfMul2Exp opts (bfFromInteger mant) (expoVal + 1) of
+    case bfMul2Exp opts' (bfFromInteger mant) (expoVal + 1) of
       (num,Ok) -> if isNeg then bfNeg num else num
-      (_,s)    -> error $ unwords ["bfFromBits", "Unexpected status:", show s ]
+      (_,s)    -> error $ unwords ["bfFromBits", "subnormal case", "Unexpected status:", show s, show bits, show mant, show expoVal, show e, show p ]
 
   | otherwise =                               -- Normal
-    case bfMul2Exp opts (bfFromInteger mantVal) expoVal of
+    case bfMul2Exp opts' (bfFromInteger mantVal) expoVal of
       (num,Ok) -> if isNeg then bfNeg num else num
-      (_,s)    -> error $ unwords ["bfFromBits", "Unexpected status:", show s ]
+      (_,s)    -> error $ unwords ["bfFromBits", "normal case", "Unexpected status:", show s, show bits, show mantVal, show expoVal, show e, show p ]
 
   where
   e = getExpBits opts
   p = getPrecBits opts
+
+  opts' = opts <> allowSubnormal
 
   p'         = p - 1                                       :: Int
   eMask      = (1 `shiftL` e) - 1                          :: Int64
@@ -381,10 +382,12 @@ bfFromBits opts bits
 -- @NaN@ is represented as a positive "quiet" @NaN@
 -- (most significant bit in the significand is set, the rest of it is 0).
 bfToBits :: BFOpts -> BigFloat -> Integer
-bfToBits opts bf =  (isNeg      `shiftL` (e + p'))
-                   .|. (expBiased  `shiftL` p')
-                   .|. (mant       `shiftL` 0)
+bfToBits opts bf = res
   where
+  res =     (isNeg      `shiftL` (e+p'))
+        .|. (expBiased  `shiftL` p')
+        .|. (mant       `shiftL` 0)
+
   e = getExpBits opts
   p = getPrecBits opts
 
@@ -406,8 +409,10 @@ bfToBits opts bf =  (isNeg      `shiftL` (e + p'))
           case num of
             Zero     -> (0,0)
             Num i ev
-              | ex == 0   -> (0, i `shiftL` (p' - m  -1)) -- subnormal case
-              | otherwise -> (ex, (i `shiftL` (p' - m)) .&. pMask) -- normal case
+              | ex <= 0 ->
+                  (0, i `shiftL` (p'-m-1+fromInteger ex)) -- subnormal case
+              | otherwise ->
+                  (ex, (i `shiftL` (p' - m)) .&. pMask) -- normal case
               where
               m    = msb 0 i - 1
               bias = eMask `shiftR` 1
@@ -419,7 +424,7 @@ bfToBits opts bf =  (isNeg      `shiftL` (e + p'))
 
 -- | test if a given big float representation is subnormal
 repIsSubnormal :: BFOpts -> BFRep -> Bool
-repIsSubnormal opts (BFRep _s (Num i ev)) = ex == 0
+repIsSubnormal opts (BFRep _s (Num i ev)) = ex <= 0
   where
   e = getExpBits opts
   eMask = (1 `shiftL` e) - 1   :: Integer
