@@ -30,6 +30,7 @@ module LibBF.Mutable
   , getExp
 
   , isFinite
+  , isInf
   , LibBF.Mutable.isNaN
   , isZero
 
@@ -42,11 +43,14 @@ module LibBF.Mutable
   , fmulInt
   , fmulWord
   , fmul2Exp
+  , ffma
   , fdiv
+  , frem
   , fsqrt
   , fpow
   , fround
   , frint
+
 
   -- * Convert from a number
   , toDouble
@@ -68,6 +72,7 @@ import Foreign.C.String
 import Data.Word
 import Data.Int
 import Data.Bits
+import Data.Hashable
 import Data.List(unfoldr)
 import Control.Monad(foldM,when)
 import Control.Exception(bracket)
@@ -171,7 +176,7 @@ bf3 f (BF fin1) (BF fin2) (BF fout) =
 
 
 -- | Indicates if a number is positive or negative.
-data Sign = Neg {-^ Negative -} | Pos {-^ Positive -} 
+data Sign = Neg {-^ Negative -} | Pos {-^ Positive -}
              deriving (Eq,Ord,Show)
 
 
@@ -344,12 +349,6 @@ isNaN = bfQuery bf_is_nan
 isZero :: BF -> IO Bool
 isZero = bfQuery bf_is_zero
 
-
-
-
-
-
-
 foreign import capi "libbf.h bf_neg"
   bf_neg :: Ptr BF -> IO ()
 
@@ -377,6 +376,8 @@ foreign import ccall "bf_mul_2exp"
 foreign import ccall "bf_div"
   bf_div :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_rem"
+  bf_rem :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> CInt -> IO Status
 
 foreign import ccall "bf_pow"
   bf_pow :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -385,7 +386,7 @@ foreign import ccall "bf_round"
   bf_round :: Ptr BF -> LimbT -> FlagsT -> IO Status
 
 foreign import ccall "bf_rint"
-  bf_rint :: Ptr BF -> LimbT -> FlagsT -> IO Status
+  bf_rint :: Ptr BF -> CInt -> IO Status
 
 foreign import ccall "bf_sqrt"
   bf_sqrt :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
@@ -399,8 +400,6 @@ bfArith fun (BFOpts prec flags) (BF fa) (BF fb) (BF fr) =
   withForeignPtr fb \b ->
   withForeignPtr fr \r ->
   fun r a b prec flags
-
-
 
 
 -- | Negate the number.
@@ -426,6 +425,21 @@ fsub = bfArith bf_sub
 fmul :: BFOpts -> BF -> BF -> BF -> IO Status
 fmul = bfArith bf_mul
 
+-- | Compute the fused-multiply-add.
+--   @ffma opts x y z r@ computes @r := (x*y)+z@.
+ffma :: BFOpts -> BF -> BF -> BF -> BF -> IO Status
+ffma (BFOpts prec f) (BF x) (BF y) (BF z) (BF r) =
+  withForeignPtr x \xp ->
+  withForeignPtr y \yp ->
+  withForeignPtr z \zp ->
+  withForeignPtr r \out ->
+    do s1 <- bf_mul out xp yp #{const BF_PREC_INF} #{const BF_RNDN}
+       case s1 of
+         MemError -> return s1
+         _ ->
+           do s2 <- bf_add out out zp prec f
+              pure (s1 <> s2)
+
 -- | Multiply the number by the given word, and store the result
 -- in the second number.
 fmulWord :: BFOpts -> BF -> Word64 -> BF -> IO Status
@@ -445,6 +459,16 @@ fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out e p f)
 fdiv :: BFOpts -> BF -> BF -> BF -> IO Status
 fdiv = bfArith bf_div
 
+-- | Compute the remainder @x - y * n@ where @n@ is the integer
+--   nearest to @x/y@ (with ties broken to even values of @n@).
+--   Output is written into the final argument.
+frem :: BFOpts -> BF -> BF -> BF -> IO Status
+frem (BFOpts p f) (BF fin1) (BF fin2) (BF fout) =
+  withForeignPtr fin1 \in1 ->
+  withForeignPtr fin2 \in2 ->
+  withForeignPtr fout \out ->
+    bf_rem out in1 in2 p f #{const BF_RNDN}
+
 -- | Compute the square root of the first number and store the result
 -- in the second.
 fsqrt :: BFOpts -> BF -> BF -> IO Status
@@ -455,8 +479,8 @@ fround :: BFOpts -> BF -> IO Status
 fround (BFOpts p f) = bf1 (\ptr -> bf_round ptr p f)
 
 -- | Round to the neareset integer.
-frint :: BFOpts -> BF -> IO Status
-frint (BFOpts p f) = bf1 (\ptr -> bf_rint ptr p f)
+frint :: RoundMode -> BF -> IO Status
+frint (RoundMode r) = bf1 (\ptr -> bf_rint ptr (fromIntegral r :: CInt))
 
 -- | Exponentiate the first number by the second,
 -- and store the result in the third number.
@@ -536,11 +560,21 @@ data BFRep  = BFRep !Sign !BFNum    -- ^ A signed number
             | BFNaN                 -- ^ Not a number
               deriving (Eq,Ord,Show)
 
--- | Representations for unsign floating point numbers.
+instance Hashable BFRep where
+  hashWithSalt s BFNaN           = s `hashWithSalt` (0::Int)
+  hashWithSalt s (BFRep Pos num) = s `hashWithSalt` (1::Int) `hashWithSalt` num
+  hashWithSalt s (BFRep Neg num) = s `hashWithSalt` (2::Int) `hashWithSalt` num
+
+-- | Representations for unsigned floating point numbers.
 data BFNum  = Zero                 -- ^ zero
             | Num Integer !Int64   -- ^ @x * 2 ^ y@
             | Inf                  -- ^ infinity
               deriving (Eq,Ord,Show)
+
+instance Hashable BFNum where
+  hashWithSalt s Zero         = s `hashWithSalt` (0::Int)
+  hashWithSalt s (Num mag ex) = s `hashWithSalt` (1::Int) `hashWithSalt` mag `hashWithSalt` ex
+  hashWithSalt s Inf          = s `hashWithSalt` (2::Int)
 
 -- | Returns 'Nothing' for @NaN@.
 getSign :: BF -> IO (Maybe Sign)
@@ -559,8 +593,14 @@ getExp = bf1 (\ptr ->
                 e > #{const BF_EXP_ZERO} then Just (fromIntegral e)
                                          else Nothing)
 
+{-| Check if the given numer is infinite. -}
+isInf :: BF -> IO Bool
+isInf = bf1 (\ptr ->
+  do e <- #{peek bf_t, expn} ptr
+     if | (e :: SLimbT) == #{const BF_EXP_INF} -> pure True
+        | otherwise -> pure False)
 
--- | Get the represnetation of the number.
+-- | Get the representation of the number.
 toRep :: BF -> IO BFRep
 toRep = bf1 (\ptr ->
   do s <- #{peek bf_t, sign} ptr
@@ -587,4 +627,3 @@ toRep = bf1 (\ptr ->
 
            pure (norm base bias) -- (BFRep sgn (Num base (e - bias)))
   )
-

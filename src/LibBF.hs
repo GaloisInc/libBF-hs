@@ -1,3 +1,4 @@
+{-# Language BangPatterns #-}
 {-# Language BlockArguments #-}
 {-# Language Trustworthy #-}
 -- | Computation with high-precision floats.
@@ -20,20 +21,27 @@ module LibBF
   , bfToRep
   , BFRep(..)
   , BFNum(..)
+  , bfFromBits
+  , bfToBits
 
     -- * Predicates
   , bfIsFinite
+  , bfIsInf
   , bfIsZero
   , bfIsNaN
+  , bfIsNormal
+  , bfIsSubnormal
   , bfCompare
   , bfSign
   , bfExponent
+  , bfIsPos
+  , bfIsNeg
   , Sign(..)
 
     -- * Arithmetic
-  , bfNeg
-  , bfAdd, bfSub, bfMul, bfDiv
-  , bfMulWord, bfMulInt, bfMul2Exp
+  , bfNeg, bfAbs
+  , bfAdd, bfSub, bfMul, bfDiv, bfRem
+  , bfFMA, bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
   , bfPow
 
@@ -52,6 +60,8 @@ module LibBF
   ) where
 
 
+import Data.Bits
+import Data.Hashable
 import Data.Word
 import Data.Int
 import System.IO.Unsafe
@@ -59,7 +69,6 @@ import System.IO.Unsafe
 import LibBF.Mutable as M
 import LibBF.Opts
 import Control.DeepSeq
-
 
 -- | Arbitrary precision floating point numbers.
 newtype BigFloat = BigFloat BF
@@ -141,6 +150,10 @@ instance Ord BigFloat where
   BigFloat x <= BigFloat y = unsafe (cmpLEQ x y)
 
 
+instance Hashable BigFloat where
+  hashWithSalt s x = hashWithSalt s (bfToRep x)
+
+
 {-| Compare the two numbers.  The special values are ordered like this:
 
       * -0 < 0
@@ -153,7 +166,7 @@ bfCompare :: BigFloat -> BigFloat -> Ordering
 bfCompare (BigFloat x) (BigFloat y) = unsafe (cmp x y)
 
 
--- | Is this a "normal" (i.e., non-infinite, non NaN) number.
+-- | Is this a finite (i.e., non-infinite, non NaN) number.
 bfIsFinite :: BigFloat -> Bool
 bfIsFinite (BigFloat x) = unsafe (isFinite x)
 
@@ -161,9 +174,49 @@ bfIsFinite (BigFloat x) = unsafe (isFinite x)
 bfIsNaN :: BigFloat -> Bool
 bfIsNaN (BigFloat x) = unsafe (M.isNaN x)
 
--- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`
+-- | Is this value infinite
+bfIsInf :: BigFloat -> Bool
+bfIsInf (BigFloat x) = unsafe (isInf x)
+
+-- | This is a "normal" number, which means it is not
+--   a NaN, not a zero, not infinite, and not subnormal.
+bfIsNormal :: BFOpts -> BigFloat -> Bool
+bfIsNormal opts bf =
+  case bfToRep bf of
+    rep@(BFRep _sgn (Num _ _)) -> not (repIsSubnormal opts rep)
+    _ -> False
+
+-- | This number is "subnormal", which means it is among the smallest
+--   representable numbers for the given precision and exponent bits.
+--   These numbers differ from "normal" numbers in that they do not use
+--   an implicit leading 1 bit in the binary representation.
+bfIsSubnormal :: BFOpts -> BigFloat -> Bool
+bfIsSubnormal opts bf = repIsSubnormal opts (bfToRep bf)
+
+-- | Get the sign of a number.  Returns 'Nothing' if the number is `NaN`.
 bfSign :: BigFloat -> Maybe Sign
 bfSign (BigFloat x) = unsafe (getSign x)
+
+-- | Compute the absolute value of a number.
+bfAbs :: BigFloat -> BigFloat
+bfAbs bf =
+  case bfSign bf of
+    Just Neg -> bfNeg bf
+    _        -> bf
+
+-- | Is this value positive
+bfIsPos :: BigFloat -> Bool
+bfIsPos bf =
+  case bfSign bf of
+    Just Pos -> True
+    _ -> False
+
+-- | Is this value negative
+bfIsNeg :: BigFloat -> Bool
+bfIsNeg bf =
+  case bfSign bf of
+    Just Neg -> True
+    _ -> False
 
 -- | Get the exponent for the given number.
 -- Infinity, zero and NaN do not have an exponent.
@@ -208,6 +261,15 @@ bfMul2Exp opt (BigFloat x) e = newBigFloat' (\p ->
 bfDiv :: BFOpts -> BigFloat -> BigFloat -> (BigFloat,Status)
 bfDiv opt (BigFloat x) (BigFloat y) = newBigFloat' (fdiv opt x y)
 
+-- | Compute the remainder @x - y * n@ where @n@ is the integer
+--   nearest to @x/y@ (with ties broken to even values of @n@).
+bfRem :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfRem opt (BigFloat x) (BigFloat y) = newBigFloat' (frem opt x y)
+
+-- | Compute the fused-multiply-add @(x*y)+z@
+bfFMA :: BFOpts -> BigFloat -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfFMA opt (BigFloat x) (BigFloat y) (BigFloat z) = newBigFloat' (ffma opt x y z)
+
 -- | Square root of two numbers useing the given options.
 bfSqrt :: BFOpts -> BigFloat -> (BigFloat,Status)
 bfSqrt opt (BigFloat x) = newBigFloat' (fsqrt opt x)
@@ -219,11 +281,11 @@ bfRoundFloat opt (BigFloat x) = newBigFloat' (\bf ->
      fround opt bf
   )
 
--- | Round to an integer using the given parameters.
-bfRoundInt :: BFOpts -> BigFloat -> (BigFloat,Status)
-bfRoundInt opt (BigFloat x) = newBigFloat' (\bf ->
+-- | Round to an integer using the given rounding mode.
+bfRoundInt :: RoundMode -> BigFloat -> (BigFloat,Status)
+bfRoundInt r (BigFloat x) = newBigFloat' (\bf ->
   do setBF x bf
-     frint opt bf
+     frint r bf
   )
 
 -- | Exponentiate a word to a positive integer power.
@@ -268,6 +330,109 @@ bfUnsafeFreeze = BigFloat
 
 --------------------------------------------------------------------------------
 
+-- | Make a float using "raw" bits representing the bitvector
+--   representation of a floating-point value with the
+--   exponent and precision bits given by the options.
+bfFromBits ::
+  BFOpts ->
+  Integer {- ^ Raw bits -} ->
+  BigFloat
+
+bfFromBits opts bits
+  | expoBiased == 0 && mant == 0 =            -- zero
+    if isNeg then bfNegZero else bfPosZero
+
+  | expoBiased == eMask && mant ==  0 =       -- infinity
+    if isNeg then bfNegInf else bfPosInf
+
+  | expoBiased == eMask = bfNaN               -- NaN
+
+  | expoBiased == 0 =                         -- Subnormal
+    case bfMul2Exp opts' (bfFromInteger mant) (expoVal + 1) of
+      (num,Ok) -> if isNeg then bfNeg num else num
+      (_,s)    -> error $ unwords ["bfFromBits", "subnormal case", "Unexpected status:", show s, show bits, show mant, show expoVal, show e, show p ]
+
+  | otherwise =                               -- Normal
+    case bfMul2Exp opts' (bfFromInteger mantVal) expoVal of
+      (num,Ok) -> if isNeg then bfNeg num else num
+      (_,s)    -> error $ unwords ["bfFromBits", "normal case", "Unexpected status:", show s, show bits, show mantVal, show expoVal, show e, show p ]
+
+  where
+  e = getExpBits opts
+  p = getPrecBits opts
+
+  opts' = opts <> allowSubnormal
+
+  p'         = p - 1                                       :: Int
+  eMask      = (1 `shiftL` e) - 1                          :: Int64
+  pMask      = (1 `shiftL` p') - 1                         :: Integer
+
+  isNeg      = testBit bits (e + p')
+
+  mant       = pMask .&. bits                              :: Integer
+  mantVal    = mant `setBit` p'                            :: Integer
+  -- accounts for the implicit 1 bit
+
+  expoBiased = eMask .&. fromInteger (bits `shiftR` p')    :: Int64
+  bias       = eMask `shiftR` 1                            :: Int64
+  expoVal    = expoBiased - bias - fromIntegral p'         :: Int64
 
 
+-- | Turn a float into raw bits.
+-- @NaN@ is represented as a positive "quiet" @NaN@
+-- (most significant bit in the significand is set, the rest of it is 0).
+bfToBits :: BFOpts -> BigFloat -> Integer
+bfToBits opts bf = res
+  where
+  res =     (isNeg      `shiftL` (e+p'))
+        .|. (expBiased  `shiftL` p')
+        .|. (mant       `shiftL` 0)
 
+  e = getExpBits opts
+  p = getPrecBits opts
+
+  p' = p - 1 :: Int
+
+  eMask = (1 `shiftL` e) - 1   :: Integer
+  pMask = (1 `shiftL` p') - 1   :: Integer
+
+  (isNeg, expBiased, mant) =
+    case bfToRep bf of
+      BFNaN       -> (0,  eMask, 1 `shiftL` (p' - 1))
+      BFRep s num -> (sign, be, ma)
+        where
+        sign = case s of
+                Neg -> 1
+                Pos -> 0
+
+        (be,ma) =
+          case num of
+            Zero     -> (0,0)
+            Num i ev
+              | ex <= 0 ->
+                  (0, i `shiftL` (p'-m-1+fromInteger ex)) -- subnormal case
+              | otherwise ->
+                  (ex, (i `shiftL` (p' - m)) .&. pMask) -- normal case
+              where
+              m    = msb 0 i - 1
+              bias = eMask `shiftR` 1
+              ex   = toInteger ev + bias + toInteger m
+
+            Inf -> (eMask,0)
+
+  msb !n j = if j == 0 then n else msb (n+1) (j `shiftR` 1)
+
+-- | test if a given big float representation is subnormal
+repIsSubnormal :: BFOpts -> BFRep -> Bool
+repIsSubnormal opts (BFRep _s (Num i ev)) = ex <= 0
+  where
+  e = getExpBits opts
+  eMask = (1 `shiftL` e) - 1   :: Integer
+  bias = eMask `shiftR` 1
+
+  m    = msb (0 :: Int) i - 1
+  ex   = toInteger ev + bias + toInteger m
+
+  msb !n j = if j == 0 then n else msb (n+1) (j `shiftR` 1)
+
+repIsSubnormal _opts _rep = False

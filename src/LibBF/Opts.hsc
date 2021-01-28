@@ -14,12 +14,14 @@ module LibBF.Opts
 
     -- ** Precision
   , precBits
+  , getPrecBits
   , precBitsMin
   , precBitsMax
   , infPrec
 
     -- ** Exponent Size
   , expBits
+  , getExpBits
   , expBitsMin
   , expBitsMax
 
@@ -97,6 +99,10 @@ infPrec = BFOpts #{const BF_PREC_INF} 0
 precBits :: Int -> BFOpts
 precBits n = BFOpts (fromIntegral n) 0
 
+-- | Retrieve how many bits to represent the mantissa in the computation.
+getPrecBits :: BFOpts -> Int
+getPrecBits (BFOpts n _) = fromIntegral n
+
 -- | Use the given rounding mode.
 -- If none is specified, then the default is 'NearEven'.
 rnd :: RoundMode -> BFOpts
@@ -119,10 +125,17 @@ allowSubnormal = BFOpts 0 #{const BF_FLAG_SUBNORMAL}
 foreign import capi "libbf.h bf_set_exp_bits"
   bf_set_exp_bits :: CInt -> FlagsT
 
+foreign import capi "libbf.h bf_get_exp_bits"
+  bf_get_exp_bits :: FlagsT -> CInt
+
 -- | Set how many bits to use to represent the exponent.
 -- Should fit in the range defined by 'expBitsMin' and 'expBitsMax'.
 expBits :: Int -> BFOpts
 expBits n = BFOpts 0 (bf_set_exp_bits (fromIntegral n))
+
+-- | Get the number of exponent bits from a @BFOpts@ value.
+getExpBits :: BFOpts -> Int
+getExpBits (BFOpts _ f) = fromIntegral (bf_get_exp_bits f)
 
 {-| The smallest supported number of bits in the exponent. -}
 foreign import capi "libbf.h value BF_EXP_BITS_MIN"
@@ -258,6 +271,13 @@ pattern Faithful = RoundMode #{const BF_RNDF}
 
 -- | A set of flags indicating things that might go wrong.
 newtype Status = Status CInt deriving (Eq,Ord)
+
+instance Semigroup Status where
+  Status a <> Status b = Status (a .|. b)
+
+instance Monoid Status where
+  mempty = Ok
+  mappend = (<>)
 
 checkStatus :: CInt -> Status -> Bool
 checkStatus n (Status x) = (x .&. n) > 0
