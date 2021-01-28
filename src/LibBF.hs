@@ -363,7 +363,7 @@ bfFromBits opts bits
 
   opts' = opts <> allowSubnormal
 
-  p'         = p - 1                                       :: Int
+  p'         = fromIntegral p - 1                          :: Int
   eMask      = (1 `shiftL` e) - 1                          :: Int64
   pMask      = (1 `shiftL` p') - 1                         :: Integer
 
@@ -391,7 +391,7 @@ bfToBits opts bf = res
   e = getExpBits opts
   p = getPrecBits opts
 
-  p' = p - 1 :: Int
+  p' = fromIntegral p - 1 :: Int
 
   eMask = (1 `shiftL` e) - 1   :: Integer
   pMask = (1 `shiftL` p') - 1   :: Integer

@@ -96,11 +96,11 @@ infPrec = BFOpts #{const BF_PREC_INF} 0
 
 -- | Use this many bits to represent the mantissa in the computation.
 -- The input should be in the interval defined by 'precMin' and 'precMax'
-precBits :: Int -> BFOpts
+precBits :: Word -> BFOpts
 precBits n = BFOpts (fromIntegral n) 0
 
 -- | Retrieve how many bits to represent the mantissa in the computation.
-getPrecBits :: BFOpts -> Int
+getPrecBits :: BFOpts -> Word
 getPrecBits (BFOpts n _) = fromIntegral n
 
 -- | Use the given rounding mode.
@@ -183,12 +183,12 @@ instance Semigroup ShowFmt where
   ShowFmt a x <> ShowFmt b y = ShowFmt (max a b) (x .|. y)
 
 {-| Show this many significant digits total . -}
-showFixed :: Word64 -> ShowFmt
-showFixed n = ShowFmt n #{const BF_FTOA_FORMAT_FIXED}
+showFixed :: Word -> ShowFmt
+showFixed n = ShowFmt (fromIntegral n) #{const BF_FTOA_FORMAT_FIXED}
 
 {-| Show this many digits after the decimal point. -}
-showFrac :: Word64 -> ShowFmt
-showFrac n = ShowFmt n #{const BF_FTOA_FORMAT_FRAC}
+showFrac :: Word -> ShowFmt
+showFrac n = ShowFmt (fromIntegral n) #{const BF_FTOA_FORMAT_FRAC}
 
 {-| Use as many digits as necessary to match the required precision
    rounding to nearest and the subnormal+exponent configuration of 'FlagsT'.
@@ -197,20 +197,20 @@ showFrac n = ShowFmt n #{const BF_FTOA_FORMAT_FRAC}
 
    Infinite precision, indicated by giving 'Nothing' for the precision
    is supported when the radix is a power of two. -}
-showFree :: Maybe Word64 -> ShowFmt
+showFree :: Maybe Word -> ShowFmt
 showFree mb = ShowFmt prec #{const BF_FTOA_FORMAT_FREE}
   where prec = case mb of
                  Nothing -> #{const BF_PREC_INF}
-                 Just n  -> n
+                 Just n  -> fromIntegral n
 
 
 {-| same as 'showFree' but uses the minimum number of digits
 (takes more computation time). -}
-showFreeMin :: Maybe Word64 -> ShowFmt
+showFreeMin :: Maybe Word -> ShowFmt
 showFreeMin mb = ShowFmt prec #{const BF_FTOA_FORMAT_FREE_MIN}
   where prec = case mb of
                  Nothing -> #{const BF_PREC_INF}
-                 Just n  -> n
+                 Just n  -> fromIntegral n
 
 
 
