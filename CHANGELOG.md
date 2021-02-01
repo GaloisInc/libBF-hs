@@ -1,5 +1,16 @@
 # Revision history for libBF-hs
 
+## 0.6 -- 2021-01-29
+
+* Fix a bug with `frint` and `bfRoundInt` that was causing incorrect
+rounding modes to be selected.
+
+* Implement additional operations on `BigFloat` values, including
+some missing predicates, conversions to and from binary form
+and fused-multiply-add.
+
+* Fix a compile issue on 32-bit systems.
+
 ## 0.5.2 -- 2021-01-12
 ￼
 * Use `install-includes` over `c-sources` for header files to avoid linker
