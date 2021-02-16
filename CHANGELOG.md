@@ -1,5 +1,9 @@
 # Revision history for libBF-hs
 
+## 0.6.1 -- 2021-02-18
+
+* Fix a linker issue on Windows when loading via the GHC dynamic linker.
+
 ## 0.6 -- 2021-01-29
 
 * Fix a bug with `frint` and `bfRoundInt` that was causing incorrect
