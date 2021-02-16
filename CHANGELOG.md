@@ -1,6 +1,6 @@
 # Revision history for libBF-hs
 
-## 0.6.1 -- 2021-02-18
+## 0.6.1 -- 2021-02-16
 
 * Fix a linker issue on Windows when loading via the GHC dynamic linker.
 
