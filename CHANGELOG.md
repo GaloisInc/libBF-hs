@@ -3,6 +3,7 @@
 ## 0.6.1 -- 2021-02-16
 
 * Fix a linker issue on Windows when loading via the GHC dynamic linker.
+* Fix a bug related to incorrect marshalling of String to C
 
 ## 0.6 -- 2021-01-29
 
