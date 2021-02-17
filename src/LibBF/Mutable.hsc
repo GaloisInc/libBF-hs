@@ -528,7 +528,7 @@ setString radix (BFOpts prec flags) inStr =
   bracket (getForeignEncoding >>= \e -> setForeignEncoding char8 >> pure e)
           setForeignEncoding
   \_enc ->
-  withCStringLen inStr \(strPtr,len) ->
+  withCAStringLen inStr \(strPtr,len) ->
   do stat <- bf_atof bfPtr strPtr nextPtr (fromIntegral radix) prec flags
      next <- peek nextPtr
      let consumed = next `minusPtr` strPtr
