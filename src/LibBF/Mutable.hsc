@@ -75,8 +75,6 @@ import Data.Bits
 import Data.Hashable
 import Data.List(unfoldr)
 import Control.Monad(foldM,when)
-import Control.Exception(bracket)
-import GHC.IO.Encoding(getForeignEncoding,setForeignEncoding,char8)
 
 import Foreign.Storable
 
@@ -525,9 +523,6 @@ setString :: Int -> BFOpts -> String -> BF -> IO (Status,Int,Bool)
 setString radix (BFOpts prec flags) inStr =
   bf1    \bfPtr ->
   alloca \nextPtr ->
-  bracket (getForeignEncoding >>= \e -> setForeignEncoding char8 >> pure e)
-          setForeignEncoding
-  \_enc ->
   withCAString inStr \strPtr ->
   do stat <- bf_atof bfPtr strPtr nextPtr (fromIntegral radix) prec flags
      next <- peek nextPtr
