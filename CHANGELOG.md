@@ -1,9 +1,13 @@
 # Revision history for libBF-hs
 
+## 0.6.2 -- 2021-02-19
+
+* Fix a bug related to incorrect marshalling of String to C in
+  `setString` and `bfFromString`.
+
 ## 0.6.1 -- 2021-02-16
 
 * Fix a linker issue on Windows when loading via the GHC dynamic linker.
-* Fix a bug related to incorrect marshalling of String to C
 
 ## 0.6 -- 2021-01-29
 
