@@ -252,7 +252,7 @@ bfMulInt :: BFOpts -> BigFloat -> Int64 -> (BigFloat,Status)
 bfMulInt opt (BigFloat x) y = newBigFloat' (fmulInt opt x y)
 
 -- | Multiply a number by @2^e@.
-bfMul2Exp :: BFOpts -> BigFloat -> Int64 -> (BigFloat,Status)
+bfMul2Exp :: BFOpts -> BigFloat -> Int -> (BigFloat,Status)
 bfMul2Exp opt (BigFloat x) e = newBigFloat' (\p ->
   do setBF x p
      fmul2Exp opt e p)
@@ -364,7 +364,7 @@ bfFromBits opts bits
   opts' = opts <> allowSubnormal
 
   p'         = fromIntegral p - 1                          :: Int
-  eMask      = (1 `shiftL` e) - 1                          :: Int64
+  eMask      = (1 `shiftL` e) - 1                          :: Int
   pMask      = (1 `shiftL` p') - 1                         :: Integer
 
   isNeg      = testBit bits (e + p')
@@ -373,9 +373,9 @@ bfFromBits opts bits
   mantVal    = mant `setBit` p'                            :: Integer
   -- accounts for the implicit 1 bit
 
-  expoBiased = eMask .&. fromInteger (bits `shiftR` p')    :: Int64
-  bias       = eMask `shiftR` 1                            :: Int64
-  expoVal    = expoBiased - bias - fromIntegral p'         :: Int64
+  expoBiased = eMask .&. fromInteger (bits `shiftR` p')    :: Int
+  bias       = eMask `shiftR` 1                            :: Int
+  expoVal    = expoBiased - bias - fromIntegral p'         :: Int
 
 
 -- | Turn a float into raw bits.

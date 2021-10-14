@@ -449,8 +449,8 @@ fmulInt :: BFOpts -> BF -> Int64 -> BF -> IO Status
 fmulInt (BFOpts p f) x y z = bf2 (\out in1 -> bf_mul_si out in1 y p f) x z
 
 -- | Multiply the number by @2^e@.
-fmul2Exp :: BFOpts -> Int64 -> BF -> IO Status
-fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out e p f)
+fmul2Exp :: BFOpts -> Int -> BF -> IO Status
+fmul2Exp (BFOpts p f) e = bf1 (\out -> bf_mul_2exp out (fromIntegral e :: SLimbT) p f)
 
 -- | Divide two numbers, using the given settings, and store the
 -- result in the last.
