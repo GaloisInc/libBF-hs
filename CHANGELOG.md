@@ -1,5 +1,10 @@
 # Revision history for libBF-hs
 
+## next -- ????.??.??
+
+* Fix the build on Windows with GHC 9.4, which bundles a Clang-based C
+  toolchain instead of a GCC-based one.
+
 ## 0.6.3 -- 2021-10-14
 
 * Fix an additional compile issue on 32-bit systems. Previously

@@ -38,8 +38,19 @@ library
 
   hs-source-dirs:      src
 
-  if os(windows)
-    extra-libraries: gcc_s
+  -- Prior to GHC 9.4, Windows GHC bindists bundled a GCC-based C toolchain,
+  -- which requires linking against the GCC library to handle some of the
+  -- compiler intrinsics that appear in the optimized code. Moreover,
+  -- dynamically linking against the GCC library proves fragile, so we force
+  -- static linking by providing the full name of the static GCC library
+  -- archive.
+  --
+  -- On GHC 9.4+, Windows GHC bindists ship a Clang-based C toolchain. Clang
+  -- optimizations don't appear to require linking against anything in
+  -- particular, so it just works out of the box.
+  if !impl(ghc >= 9.4)
+    if os(windows)
+      extra-libraries: gcc_s
 
   if flag(system-libbf)
     extra-libraries: bf
