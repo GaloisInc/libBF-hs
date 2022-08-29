@@ -49,8 +49,10 @@ library
   -- optimizations don't appear to require linking against anything in
   -- particular, so it just works out of the box.
   if !impl(ghc >= 9.4)
-    if os(windows)
-      extra-libraries: gcc_s
+    if arch(x86_64)
+      extra-libraries: gcc_s_seh-1
+    else
+      extra-libraries: gcc_s_dw2-1
 
   if flag(system-libbf)
     extra-libraries: bf
