@@ -1,5 +1,9 @@
 # Revision history for libBF-hs
 
+## 0.6.5 -- 2022.08.29
+
+* Force static linking against `gcc_s` on Windows to avoid portability issues.
+
 ## 0.6.4 -- 2022.08.11
 
 * Fix the build on Windows with GHC 9.4, which bundles a Clang-based C
