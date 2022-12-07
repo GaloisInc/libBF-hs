@@ -44,6 +44,16 @@ module LibBF
   , bfFMA, bfMulWord, bfMulInt, bfMul2Exp
   , bfSqrt
   , bfPow
+  , bfConstPi
+  , bfExp
+  , bfLog
+  , bfSin
+  , bfCos
+  , bfTan
+  , bfAsin
+  , bfAcos
+  , bfAtan
+  , bfAtan2
 
     -- * Rounding
   , bfRoundFloat, bfRoundInt
@@ -291,6 +301,48 @@ bfRoundInt r (BigFloat x) = newBigFloat' (\bf ->
 -- | Exponentiate a word to a positive integer power.
 bfPow :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
 bfPow opts (BigFloat x) (BigFloat y) = newBigFloat' (fpow opts x y)
+
+-- | Compute @pi@ using the given options.
+bfConstPi :: BFOpts -> (BigFloat,Status)
+bfConstPi opt = newBigFloat' (fconst_pi opt)
+
+-- | Compute the exponential function (@exp()@) of a number using the given
+-- options.
+bfExp :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfExp opt (BigFloat x) = newBigFloat' (fexp opt x)
+
+-- | Compute the logarithm (@log()@) of a number using the given options.
+bfLog :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfLog opt (BigFloat x) = newBigFloat' (flog opt x)
+
+-- | Compute the sine of a number using the given options.
+bfSin :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfSin opt (BigFloat x) = newBigFloat' (fsin opt x)
+
+-- | Compute the cosine of a number using the given options.
+bfCos :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfCos opt (BigFloat x) = newBigFloat' (fcos opt x)
+
+-- | Compute the tangent of a number using the given options.
+bfTan :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfTan opt (BigFloat x) = newBigFloat' (ftan opt x)
+
+-- | Compute the arcsine of a number using the given options.
+bfAsin :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfAsin opt (BigFloat x) = newBigFloat' (fasin opt x)
+
+-- | Compute the arccosine of a number using the given options.
+bfAcos :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfAcos opt (BigFloat x) = newBigFloat' (facos opt x)
+
+-- | Compute the arctangent of a number using the given options.
+bfAtan :: BFOpts -> BigFloat -> (BigFloat,Status)
+bfAtan opt (BigFloat x) = newBigFloat' (fatan opt x)
+
+-- | Compute the two-argument arctangent function of two numbers using the given
+-- options.
+bfAtan2 :: BFOpts -> BigFloat -> BigFloat -> (BigFloat, Status)
+bfAtan2 opts (BigFloat x) (BigFloat y) = newBigFloat' (fatan2 opts x y)
 
 -- | Constant to a 'Double'
 bfToDouble :: RoundMode -> BigFloat -> (Double, Status)

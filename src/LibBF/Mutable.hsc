@@ -50,7 +50,16 @@ module LibBF.Mutable
   , fpow
   , fround
   , frint
-
+  , fconst_pi
+  , fexp
+  , flog
+  , fsin
+  , fcos
+  , ftan
+  , fasin
+  , facos
+  , fatan
+  , fatan2
 
   -- * Convert from a number
   , toDouble
@@ -389,7 +398,35 @@ foreign import ccall "bf_rint"
 foreign import ccall "bf_sqrt"
   bf_sqrt :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_const_pi"
+  bf_const_pi :: Ptr BF -> LimbT -> FlagsT -> IO Status
 
+foreign import ccall "bf_exp"
+  bf_exp :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_log"
+  bf_log :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_sin"
+  bf_sin :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_cos"
+  bf_cos :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_tan"
+  bf_tan :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_asin"
+  bf_asin :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_acos"
+  bf_acos :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_atan"
+  bf_atan :: Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
+
+foreign import ccall "bf_atan2"
+  bf_atan2 :: Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status
 
 bfArith :: (Ptr BF -> Ptr BF -> Ptr BF -> LimbT -> FlagsT -> IO Status) ->
            BFOpts -> BF -> BF -> BF -> IO Status
@@ -485,8 +522,51 @@ frint (RoundMode r) = bf1 (\ptr -> bf_rint ptr (fromIntegral r :: CInt))
 fpow :: BFOpts -> BF -> BF -> BF -> IO Status
 fpow (BFOpts prec flags) = bf3 (\out in1 in2 -> bf_pow out in1 in2 prec flags)
 
+-- | Compute @pi@ to the specified precision and store the result in the
+-- argument.
+fconst_pi :: BFOpts -> BF -> IO Status
+fconst_pi (BFOpts p f) (BF fout) = withForeignPtr fout \out -> bf_const_pi out p f
 
+-- | Compute the exponential function (@exp()@) of the first number and store
+-- the result in the second.
+fexp :: BFOpts -> BF -> BF -> IO Status
+fexp (BFOpts p f) = bf2 (\res inp -> bf_exp res inp p f)
 
+-- | Compute the logarithm (@log()@) of the first number and store the result in
+-- the second.
+flog :: BFOpts -> BF -> BF -> IO Status
+flog (BFOpts p f) = bf2 (\res inp -> bf_log res inp p f)
+
+-- | Compute the sine of the first number and store the result in the second.
+fsin :: BFOpts -> BF -> BF -> IO Status
+fsin (BFOpts p f) = bf2 (\res inp -> bf_sin res inp p f)
+
+-- | Compute the cosine of the first number and store the result in the second.
+fcos :: BFOpts -> BF -> BF -> IO Status
+fcos (BFOpts p f) = bf2 (\res inp -> bf_cos res inp p f)
+
+-- | Compute the tangent of the first number and store the result in the second.
+ftan :: BFOpts -> BF -> BF -> IO Status
+ftan (BFOpts p f) = bf2 (\res inp -> bf_tan res inp p f)
+
+-- | Compute the arcsine of the first number and store the result in the second.
+fasin :: BFOpts -> BF -> BF -> IO Status
+fasin (BFOpts p f) = bf2 (\res inp -> bf_asin res inp p f)
+
+-- | Compute the arccosine of the first number and store the result in the
+-- second.
+facos :: BFOpts -> BF -> BF -> IO Status
+facos (BFOpts p f) = bf2 (\res inp -> bf_acos res inp p f)
+
+-- | Compute the arctangent of the first number and store the result in the
+-- second.
+fatan :: BFOpts -> BF -> BF -> IO Status
+fatan (BFOpts p f) = bf2 (\res inp -> bf_atan res inp p f)
+
+-- | Compute the two-argument arctangent function (@atan2()@) of the first two
+-- numbers and store the result in the second.
+fatan2 :: BFOpts -> BF -> BF -> BF -> IO Status
+fatan2 (BFOpts prec flags) = bf3 (\out in1 in2 -> bf_atan2 out in1 in2 prec flags)
 
 
 --------------------------------------------------------------------------------
