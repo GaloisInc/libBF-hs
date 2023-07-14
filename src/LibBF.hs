@@ -382,7 +382,12 @@ bfFromBits opts bits
 -- @NaN@ is represented as a positive "quiet" @NaN@
 -- (most significant bit in the significand is set, the rest of it is 0).
 bfToBits :: BFOpts -> BigFloat -> Integer
-bfToBits opts bf = res
+bfToBits opts bf 
+  | bfIsZero bf, bfIsPos bf = 0
+  | bfIsZero bf, bfIsNeg bf, 15 <- (e + p') = (fromIntegral (maxBound :: Int16)) + 1
+  | bfIsZero bf, bfIsNeg bf, 31 <- (e + p') = (fromIntegral (maxBound :: Int32)) + 1
+  | bfIsZero bf, bfIsNeg bf, 63 <- (e + p') = (fromIntegral (maxBound :: Int64)) + 1
+  | otherwise = res
   where
   res =     (isNeg      `shiftL` (e+p'))
         .|. (expBiased  `shiftL` p')
