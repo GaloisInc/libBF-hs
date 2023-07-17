@@ -61,18 +61,18 @@ library
       cbits/libbf-hs.c
   else
     include-dirs:
-      libbf-2020-01-19
+      libbf-quickjs-2021-03-27
 
     includes:
-      libbf-2020-01-19/libbf.h
+      libbf-quickjs-2021-03-27/libbf.h
 
     install-includes:
-      libbf-2020-01-19/libbf.h
-      libbf-2020-01-19/cutils.h
+      libbf-quickjs-2021-03-27/libbf.h
+      libbf-quickjs-2021-03-27/cutils.h
 
     c-sources:
-      libbf-2020-01-19/cutils.c
-      libbf-2020-01-19/libbf.c
+      libbf-quickjs-2021-03-27/cutils.c
+      libbf-quickjs-2021-03-27/libbf.c
       cbits/libbf-hs.c
 
   ghc-options:         -Wall

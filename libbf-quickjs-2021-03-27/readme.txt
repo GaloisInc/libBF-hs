@@ -1,5 +1,12 @@
 Tiny Big Float library
 ----------------------
+(NOTE: The code in this directory actually corresponds to a vendored version of
+libbf that is included as part of the 2021-03-27 release of quickjs, which is
+more up-to-date than the most recent official libbf release. See
+https://github.com/bellard/quickjs/commit/b5e62895c619d4ffc75c9d822c8d85f1ece77e5b.
+The quickjs version of libbf does not have a readme, so we include that from
+the most recent official libbf release (2020-01-19).)
+
 Copyright (c) 2017-2020 Fabrice Bellard
 
 LibBF is a small library to handle arbitrary precision binary or
