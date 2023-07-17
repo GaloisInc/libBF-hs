@@ -1,5 +1,12 @@
 # Revision history for libBF-hs
 
+## 0.6.6 -- 2023.07.17
+
+* Update the vendored version of `libbf` to include the changes from the
+  `2021-03-27` version of `libbf` included in `quickjs`. This includes a bugfix
+  that prevents the `bfIsSubnormal` function from infinitely looping on AArch64
+  (and other non-x86 64-bit architectures) on certain inputs.
+
 ## 0.6.5.1 -- 2022.08.29
 
 * Fix a build error on non-Windows OSes accidentally introduced in version
