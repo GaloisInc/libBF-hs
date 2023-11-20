@@ -1,0 +1,104 @@
+name: libBF-hs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # The CACHE_VERSION can be updated to force the use of a new cache if
+  # the current cache contents become corrupted/invalid.  This can
+  # sometimes happen when (for example) the OS version is changed but
+  # older .so files are cached, which can have various effects
+  # (e.g. cabal complains it can't find a valid version of the "happy"
+  # tool).
+  CACHE_VERSION: 1
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04]
+        ghc-version: ["9.2.8", "9.4.8", "9.6.3"]
+        cabal: [ '3.10.2.0' ]
+
+        include:
+          - os: macos-12
+            ghc-version: 9.2.8
+            cabal: 3.10.2.0
+          - os: windows-2022
+            ghc-version: 9.2.8
+            cabal: 3.10.2.0
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: haskell/actions/setup@v2
+        id: setup-haskell
+        with:
+          ghc-version: ${{ matrix.ghc-version }}
+          cabal-version: ${{ matrix.cabal }}
+
+      - uses: msys2/setup-msys2@v2
+        name: Set up MSYS2 on Windows
+        if: runner.os == 'Windows'
+        with:
+          path-type: inherit
+
+      - uses: actions/cache/restore@v3
+        name: Restore cabal store cache
+        with:
+          path: |
+            ${{ steps.setup-haskell.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ env.CACHE_VERSION }}-cabal-${{ matrix.os }}-${{ matrix.ghc-version }}-${{ hashFiles(format('cabal.GHC-{0}.config', matrix.ghc-version)) }}-${{ github.sha }}
+          restore-keys: |
+            ${{ env.CACHE_VERSION }}-cabal-${{ matrix.os }}-${{ matrix.ghc-version }}-${{ hashFiles(format('cabal.GHC-{0}.config', matrix.ghc-version)) }}-
+
+      - shell: bash
+        name: Update
+        run: cabal update
+
+      - shell: bash
+        name: Configure
+        run: cabal configure --enable-tests -j2 all
+
+      - shell: bash
+        name: Build library
+        run: cabal build
+
+      - shell: bash
+        name: Run tests
+        run: cabal test
+
+      # In https://github.com/GaloisInc/libBF-hs/issues/19, it was observed that
+      # Windows binaries that depended on libBF would dynamically link against
+      # MSYS2 DLLs, which would cause runtime errors if you didn't run the
+      # binaries in MSYS2 itself. As a smoke test, we print out the dynamic
+      # dependencies of a small libBF binary to see if anything crept in.
+      - shell: bash
+        name: Check dynamic dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: ldd $(cabal list-bin test:libBF-tests)
+
+      - shell: bash
+        name: Check dynamic dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: otool -L $(cabal list-bin test:libBF-tests)
+
+      - shell: msys2 {0}
+        name: Check dynamic dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: ldd $(cabal list-bin test:libBF-tests)
+
+      - uses: actions/cache/save@v3
+        name: Save cabal store cache
+        if: always()
+        with:
+          path: |
+            ${{ steps.setup-haskell.outputs.cabal-store }}
+            dist-newstyle
+          key: ${{ env.CACHE_VERSION }}-cabal-${{ matrix.os }}-${{ matrix.ghc-version }}-${{ hashFiles(format('cabal.GHC-{0}.config', matrix.ghc-version)) }}-${{ github.sha }}
