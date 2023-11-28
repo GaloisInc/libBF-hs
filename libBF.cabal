@@ -78,13 +78,6 @@ library
   ghc-options:         -Wall
   default-language:    Haskell2010
 
-executable bf-test
-  main-is:            RunUnitTests.hs
-  hs-source-dirs:     tests
-  build-depends:      base, libBF
-  default-language:   Haskell2010
-
-
 test-suite libBF-tests
   type:               exitcode-stdio-1.0
   hs-source-dirs:     tests
