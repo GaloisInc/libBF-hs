@@ -1,42 +1,63 @@
 {-# Language BlockArguments #-}
 module Main(main) where
 
-import Data.Foldable(traverse_)
-import System.Exit(exitFailure)
-import System.IO(hPutStrLn,stderr)
-import Control.Monad(unless)
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.HUnit ((@=?), assertFailure, testCase)
 
 import LibBF
 
 
 main :: IO ()
 main =
-  do putStrLn $ bfToString 16 (showFree Nothing) bfNaN
-     print $ bfFromString 10 (expBits 3 <> precBits 2 <> rnd ToZero) "0.001"
-     print $ bfFromString 10 (expBits 3 <> precBits 2 <> rnd ToZero) "1.0e200"
-     dblTest "+" (+) (bfAdd (float64 NearEven)) 1 2
-     dblTest "/" (/) (bfDiv (float64 NearEven)) 1 0
-     traverse_ (\bf -> bfSubnormalTest bf False)
-       [bfPosZero, bfFromInt 1, bfFromInt 0, bfNaN, bfNegInf, bfPosInf]
+  defaultMain $
+  testGroup "LibBF tests"
+    [ testGroup "bfToString"
+        [ testCase "NaN" $
+            "NaN" @=? bfToString 16 (showFree Nothing) bfNaN
+        ]
+    , testGroup "bfFromString"
+        [ testCase "Underflow" $
+            let (_, status) =
+                  bfFromString 10 (expBits 3 <> precBits 2 <> rnd ToZero) "0.001" in
+            True @=? statusUnderflow status
+        , testCase "Overflow" $
+            let (_, status) =
+                  bfFromString 10 (expBits 3 <> precBits 2 <> rnd ToZero) "1.0e200" in
+            True @=? statusOverflow status
+        ]
+    , testGroup "bfAdd"
+        [ dblTestCase "+" (+) (bfAdd (float64 NearEven)) 1 2
+        ]
+    , testGroup "bfDiv"
+        [ dblTestCase "/" (/) (bfDiv (float64 NearEven)) 1 0
+        ]
+    , testGroup "bfIsSubnormal (float32 NearEven)"
+        (map (\bf -> bfSubnormalTestCase bf False)
+             [bfPosZero, bfFromInt 1, bfFromInt 0, bfNaN, bfNegInf, bfPosInf])
+    ]
 
-check :: String -> Bool -> IO ()
-check x b = unless b
-              do hPutStrLn stderr ("Test failed: " ++ x)
-                 exitFailure
+statusUnderflow :: Status -> Bool
+statusUnderflow Underflow = True
+statusUnderflow _         = False
 
-dblTest ::
+statusOverflow :: Status -> Bool
+statusOverflow Overflow = True
+statusOverflow _        = False
+
+-- Check that a binary operation over BigFloats returns the same result as the
+-- corresponding operation over doubles.
+dblTestCase ::
   String ->
   (Double -> Double -> Double) ->
   (BigFloat -> BigFloat -> (BigFloat, Status)) ->
-  Double -> Double -> IO ()
-dblTest op opD opBF x y =
+  Double -> Double -> TestTree
+dblTestCase op opD opBF x y =
+  testCase (unwords [show x, op, show y]) $
   case z1 of
-    Left err -> check (lab ("status: " ++ err)) False
-    Right a  -> check (lab (show a)) (z == a)
+    Left err -> assertFailure ("status: " ++ err)
+    Right actual -> expected @=? actual
   where
-  lab err = unwords [ show x, op, show y, "=", show z, err ]
-
-  z  = opD x y
+  expected = opD x y
   z1 = case opBF (bfFromDouble x) (bfFromDouble y) of
         (res,_) ->
           case bfToDouble NearEven res of
@@ -45,7 +66,7 @@ dblTest op opD opBF x y =
 
 -- Check that calling bfIsSubnormal on a BigFloat value returns the expected
 -- result.
-bfSubnormalTest :: BigFloat -> Bool -> IO ()
-bfSubnormalTest bf expected =
-  check ("bfIsSubnormal (float32 NearEven) " ++ show bf)
-        (bfIsSubnormal (float32 NearEven) bf == expected)
+bfSubnormalTestCase :: BigFloat -> Bool -> TestTree
+bfSubnormalTestCase bf expected =
+  testCase (show bf) $
+  expected @=? bfIsSubnormal (float32 NearEven) bf
