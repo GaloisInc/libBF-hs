@@ -1,5 +1,9 @@
 # Revision history for libBF-hs
 
+## next -- TBA
+
+* Add `Data` instances for `BigFloat`, `Sign`, `BFRep`, and `BFNum`.
+
 ## 0.6.6 -- 2023.07.17
 
 * Update the vendored version of `libbf` to include the changes from the
