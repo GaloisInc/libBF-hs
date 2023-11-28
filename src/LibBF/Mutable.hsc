@@ -2,6 +2,7 @@
 {-# Language PatternSynonyms #-}
 {-# Language MultiWayIf #-}
 {-# Language BlockArguments #-}
+{-# Language DeriveDataTypeable #-}
 -- | Mutable big-float computation.
 module LibBF.Mutable
   ( -- * Allocation
@@ -69,6 +70,7 @@ import Foreign.Ptr(Ptr,FunPtr,minusPtr)
 import Foreign.ForeignPtr
 import Foreign.C.Types
 import Foreign.C.String
+import Data.Data (Data)
 import Data.Word
 import Data.Int
 import Data.Bits
@@ -175,7 +177,7 @@ bf3 f (BF fin1) (BF fin2) (BF fout) =
 
 -- | Indicates if a number is positive or negative.
 data Sign = Neg {-^ Negative -} | Pos {-^ Positive -}
-             deriving (Eq,Ord,Show)
+             deriving (Data,Eq,Ord,Show)
 
 
 foreign import ccall "bf_set_nan"
@@ -553,7 +555,7 @@ toString radix (ShowFmt ds flags) =
 -- | An explicit representation for big nums.
 data BFRep  = BFRep !Sign !BFNum    -- ^ A signed number
             | BFNaN                 -- ^ Not a number
-              deriving (Eq,Ord,Show)
+              deriving (Data,Eq,Ord,Show)
 
 instance Hashable BFRep where
   hashWithSalt s BFNaN           = s `hashWithSalt` (0::Int)
@@ -564,7 +566,7 @@ instance Hashable BFRep where
 data BFNum  = Zero                 -- ^ zero
             | Num Integer !Int64   -- ^ @x * 2 ^ y@
             | Inf                  -- ^ infinity
-              deriving (Eq,Ord,Show)
+              deriving (Data,Eq,Ord,Show)
 
 instance Hashable BFNum where
   hashWithSalt s Zero         = s `hashWithSalt` (0::Int)

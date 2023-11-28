@@ -61,6 +61,7 @@ module LibBF
 
 
 import Data.Bits
+import Data.Data (Data(..))
 import Data.Hashable
 import Data.Word
 import Data.Int
@@ -72,6 +73,15 @@ import Control.DeepSeq
 
 -- | Arbitrary precision floating point numbers.
 newtype BigFloat = BigFloat BF
+
+instance Data BigFloat where
+  -- BigFloat is exported as an abstract data type, so we intentionally define
+  -- the Data instance in a simplistic way so as to avoid leaking the BF
+  -- internals.
+  gfoldl _ z = z
+  gunfold _ _ = error "Data.Data.gunfold(BigFloat)"
+  toConstr _ = error "Data.Data.toConstr(BigFloat)"
+  dataTypeOf _ = error "Data.Data.dataTypeOf(BigFloat)"
 
 instance NFData BigFloat where
   rnf x = x `seq` ()
